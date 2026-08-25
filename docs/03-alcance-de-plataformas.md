@@ -1,0 +1,106 @@
+# Wayka — Alcance de Plataformas
+
+MVP — Web de gestión + Aplicación móvil
+Versión 1.0 · Complementa a Modelo de Datos y Reglas de Negocio
+
+## 1. Definición de plataformas
+
+Wayka se compone de dos productos para el MVP: una aplicación web de gestión, de uso exclusivo de la clínica, y una aplicación móvil que sirve tanto al veterinario como al tutor, con permisos distintos según el rol autenticado.
+
+| Plataforma | Quién accede | Propósito |
+|---|---|---|
+| Web | Veterinario, Clínica_admin | Gestión completa del día a día clínico y administrativo. |
+| Móvil | Veterinario (paridad con web), Tutor (acceso exclusivo) | Para el veterinario: misma herramienta que la web, disponible fuera de la clínica. Para el tutor: único punto de entrada al sistema. |
+| Línea de comandos | Administrador de la plataforma | Alta de una Clínica junto con su cuenta clínica_admin (Reglas de Negocio, 4.10). No es una interfaz de usuario del producto: es una herramienta de operación, fuera de la API HTTP. |
+
+> El tutor no tiene acceso a la web bajo ninguna circunstancia. El clínica_admin no tiene acceso a la aplicación móvil. Ambas restricciones deben validarse en el backend, no solo ocultarse en la interfaz — mismo criterio aplicado al motor de permisos en Reglas de Negocio.
+
+## 2. Matriz de plataforma por rol
+
+| Rol | Web | Móvil |
+|---|---|---|
+| Clínica_admin | Acceso completo | Sin acceso |
+| Veterinario | Acceso completo | Acceso completo (paridad total con la web) |
+| Tutor | Sin acceso | Único punto de entrada |
+
+> La paridad del veterinario entre web y móvil implica que ambas plataformas comparten el mismo conjunto de funcionalidades para ese rol — la diferencia entre plataformas es de dispositivo/contexto de uso, no de permisos ni de features disponibles.
+
+## 3. Pantallas mínimas — Web
+
+### 3.1 Login
+- Autenticación por email + contraseña.
+- Rechaza el acceso si el usuario autenticado es de tipo tutor (regla de canal).
+
+### 3.2 Panel de clínica (rol: Clínica_admin)
+- Alta, edición y baja lógica de Veterinarios asociados a la clínica. La ficha y la cuenta de acceso se crean juntas, en una sola operación (proceso 4.12 de Reglas de Negocio), y la baja de la ficha desactiva la cuenta (4.13).
+- La clínica y su propia cuenta de administrador no se crean desde acá: las da de alta el administrador de la plataforma (proceso 4.10 de Reglas de Negocio).
+- Edición de datos administrativos de la Clínica (nombre, dirección, contacto).
+- Sin acceso a historial clínico ni medicación de pacientes (regla de alcance ya definida).
+
+### 3.3 Gestión de pacientes (rol: Veterinario)
+- Lectura del plantel de la propia clínica (sin poder modificarlo), para resolver quién firmó cada registro clínico.
+- Alta de paciente (con alta de tutor si no existe, según proceso 4.1 de Reglas de Negocio).
+- Búsqueda de tutores por documento, nombre o contacto; alta y edición de la ficha de un tutor, incluido completar documento y dirección. El listado se pagina siempre: no está acotado a la propia clínica.
+- Baja lógica de una ficha de tutor.
+- Búsqueda y listado de pacientes de la propia clínica.
+- Ficha de paciente: datos básicos, historial de eventos clínicos, medicación activa e histórica.
+
+### 3.4 Carga de evento clínico (rol: Veterinario)
+- Formulario por tipo de evento (consulta, vacuna, cirugía, control, urgencia).
+- Campos estructurados obligatorios para vacunas y alergias (según nota 4.5 del Modelo de Datos).
+- Adjuntar archivos (foto, PDF, estudio) al evento.
+
+### 3.5 Gestión de medicación (rol: Veterinario)
+- Alta de medicación activa, con bloqueo si ya existe una activa de la misma droga (regla 2.2).
+- Cierre de medicación (fecha_fin).
+- Vista rápida de medicación activa por paciente.
+
+### 3.6 Calendario / Citas (rol: Veterinario)
+- Creación de citas (vacuna, control, cirugía programada).
+- Vista de citas pendientes y vencidas de la clínica.
+
+## 4. Pantallas mínimas — Móvil (Veterinario)
+
+Mismo conjunto funcional que las secciones 3.3 a 3.6, adaptado a formato móvil. No se listan de nuevo por tratarse de las mismas funcionalidades con paridad total.
+
+> Nota de diseño: al tener paridad completa, conviene evaluar en la etapa técnica si conviene un codebase compartido (ej. framework multiplataforma) para el veterinario, en vez de mantener dos implementaciones separadas del mismo alcance funcional.
+
+## 5. Pantallas mínimas — Móvil (Tutor)
+
+### 5.1 Login / Registro
+- Autenticación por email + contraseña, o con Google.
+- **Registro abierto**: el tutor crea su cuenta desde la app sin intervención de una clínica, indicando nombre, email, contraseña y el consentimiento de uso de datos (proceso 4.9 de Reglas de Negocio). El registro crea su ficha de Tutor junto con la cuenta.
+- Queda operativo de inmediato: entra y ve sus secciones vacías hasta que una clínica le vincule Pacientes.
+
+### 5.2 Mis mascotas
+- Listado de pacientes asociados al tutor autenticado. Vacío hasta que una clínica le vincule alguno: el tutor no da de alta Pacientes por su cuenta (el alta la inicia el veterinario y fija clínica_id — Reglas de Negocio, 4.1).
+
+### 5.3 Ficha de paciente (solo lectura)
+- Historial de eventos clínicos: fecha, tipo, descripción, diagnóstico.
+- Medicación activa e histórica.
+- Sin permisos de edición sobre ningún dato clínico (regla de la matriz de permisos).
+
+### 5.4 Calendario
+- Vista de citas pendientes y su fecha programada.
+- Confirmar o solicitar reagenda de una cita (sin poder cambiar el estado directamente, según proceso 4.4 de Reglas de Negocio).
+
+### 5.5 Notificaciones
+- Recordatorio push el día anterior a una cita y el mismo día, sobre las citas con `notificar_tutor` habilitado (Reglas de Negocio, 4.15).
+- La app registra el dispositivo al iniciar sesión y lo da de baja al cerrarla: una cuenta sin dispositivo registrado no recibe avisos.
+- El aviso dice qué mascota y qué día; nunca contenido clínico. Una notificación se lee en la pantalla bloqueada del teléfono.
+
+### 5.6 Adjuntos
+- Subida de archivos (ej. ficha histórica en papel, foto de una herida) asociados al paciente.
+
+### 5.7 Datos básicos del paciente
+- Edición de campos no clínicos: peso actual.
+
+### 5.8 Mis datos (ficha propia del tutor)
+- Lectura y edición de la ficha propia: nombre, contacto, dirección y documento.
+- El consentimiento de uso de datos no se edita desde acá: se otorga en el registro y no se revoca por la aplicación.
+- El tutor no ve ni busca fichas de otros tutores, y no puede dar de baja la suya.
+
+## 6. Fuera de alcance de este documento
+
+- **Vista específica de paciente derivado en urgencia** — pendiente de definición, relacionada con Fase 2.
+- **Elección de stack técnico** — este documento define funcionalidad, no tecnología.

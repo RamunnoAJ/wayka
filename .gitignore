@@ -1,0 +1,7 @@
+# Los subproyectos son repos git independientes, con su propio historial.
+# Este repo versiona unicamente el contrato de producto compartido (/docs)
+# y el CLAUDE.md raiz.
+/backend/
+/frontend/
+
+.DS_Store
