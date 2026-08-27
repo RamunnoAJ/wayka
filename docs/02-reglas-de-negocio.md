@@ -146,6 +146,8 @@ Sobre la Cita, el alcance se resuelve así:
 | Clínica_admin | Sin acceso: el calendario cuelga del Paciente, y su rol no alcanza las mascotas atendidas. |
 
 > El listado de pacientes es un endpoint con dos alcances: cuál aplica lo decide el rol del token, nunca un parámetro del cliente. El veterinario ve la cartera de su clínica; el tutor, sus mascotas.
+>
+> El listado de **citas** funciona igual y por el mismo motivo. Existe además del calendario de una mascota porque las dos preguntas son distintas: "qué le toca a Luna" cuelga del Paciente, pero "qué tiene la clínica esta semana" (Alcance de Plataformas, 3.6) no cuelga de ninguna mascota en particular. Sin él, la agenda habría que armarla pidiendo el calendario de cada paciente de la cartera, uno por uno.
 
 Sobre la Clínica, el alcance se resuelve así:
 
