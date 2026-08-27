@@ -65,8 +65,9 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 
 ### 3.6 Calendario / Citas (rol: Veterinario)
 - Creación de citas (vacuna, control, cirugía programada) con **fecha y hora**, sobre la grilla que definen el horario de atención y la duración del turno de la clínica (3.2). Las horas fuera de la grilla no se ofrecen: el backend las rechaza igual, pero ofrecerlas y después fallar es un error que la interfaz puede evitar.
-- Vista de citas pendientes y vencidas de la clínica, por día, semana y mes.
-- La agenda es **de la clínica, no de cada profesional**: la Cita no lleva veterinario asignado en el MVP (Modelo de Datos, 4.7). Dos citas del mismo horario no colisionan, y la vista no debe sugerir que sí.
+- Vista de citas pendientes y vencidas de la clínica, por día, semana y mes, con quién atiende cada una.
+- **Asignación de profesional**, opcional: una cita puede quedar de la clínica y repartirse después. Al asignar, no se ofrecen los profesionales que ya tienen otra cita en ese momento — el backend lo rechaza igual, pero ofrecerlo y después fallar es un error que la interfaz puede evitar.
+- Filtrar la agenda por profesional, incluyendo "sin asignar": es la lista de lo que todavía hay que repartir.
 
 ## 4. Pantallas mínimas — Móvil (Veterinario)
 
@@ -90,7 +91,7 @@ Mismo conjunto funcional que las secciones 3.3 a 3.6, adaptado a formato móvil.
 - Sin permisos de edición sobre ningún dato clínico (regla de la matriz de permisos).
 
 ### 5.4 Calendario
-- Vista de citas pendientes con su fecha **y hora**.
+- Vista de citas pendientes con su fecha **y hora**, y con quién la va a atender si ya está asignada.
 - Confirmar o solicitar reagenda de una cita (sin poder cambiar el estado directamente, según proceso 4.4 de Reglas de Negocio). Al reagendar, el tutor elige entre las horas válidas de la clínica que atiende a su mascota, igual que el veterinario.
 
 ### 5.5 Notificaciones

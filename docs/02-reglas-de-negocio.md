@@ -43,6 +43,8 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Consentimiento previo a alta de paciente | Tutor, Paciente | No se puede dar de alta un Paciente si el Tutor asociado no tiene consentimiento_datos = true. |
 | Momento no pasado | Cita | fecha_programada no puede ser anterior al momento actual, ni al crear ni al reagendar. Es la regla espejo del Evento clínico: lo que ya ocurrió se registra como evento, lo que va a ocurrir se agenda como cita. Una cita creada en el pasado nacería vencida. Ahora que `fecha_programada` lleva hora, la comparación es contra el instante y no contra el día: agendar hoy a las 09:00 cuando son las 15:00 se rechaza. |
 | Dentro del horario de atención | Cita | fecha_programada tiene que caer entre `hora_apertura` y `hora_cierre` de la clínica del paciente, y el turno completo (`duración_turno_minutos`) tiene que terminar antes del cierre. Una cita fuera del horario no la puede atender nadie. |
+| Un profesional no se duplica | Cita | Un mismo veterinario no puede tener dos Citas **pendientes** en el mismo momento. Es la regla que hace que asignar profesional signifique algo: sin ella la asignación es una etiqueta y la agenda vuelve a mentir sobre quién está libre. Las citas sin asignar no colisionan entre sí — sin profesional no hay a quién solapar. Una cita cumplida o vencida tampoco bloquea: ya pasó. |
+| El profesional atiende en esa clínica | Cita | `veterinario_id`, si viene, tiene que ser de un veterinario vigente de la clínica del paciente. Asignarle una cita a alguien de otra clínica sería agendarle trabajo a quien no atiende ahí. |
 | Alineada a la grilla de turnos | Cita | La hora de fecha_programada tiene que ser múltiplo de `duración_turno_minutos` contado desde `hora_apertura`. Con turnos de 30 min y apertura a las 09:00, valen 09:00, 09:30, 10:00…; 09:17 se rechaza. Sin esta regla los turnos se solapan de a poco y la grilla del calendario deja de representar la agenda real. |
 | Paciente vigente para agendar | Cita | No se agendan Citas nuevas sobre un Paciente con `deleted_at`. Las ya programadas siguen consultables (regla 4.5). |
 | Estado no editable | Cita | `estado` no se recibe por la API en ninguna operación: lo mueve el sistema (Modelo de Datos, 4.7). |
@@ -141,8 +143,8 @@ Sobre la Cita, el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Cita |
 |---|---|
-| Veterinario | El calendario de los pacientes de su clínica: agenda, lista, lee, reagenda y da de baja. |
-| Tutor | Solo las citas de sus propias mascotas. Lee, reagenda (fecha_programada) y decide si quiere que le avisen (notificar_tutor), y puede darlas de baja. No agenda citas nuevas ni cambia el tipo: qué control corresponde es criterio clínico. |
+| Veterinario | El calendario de los pacientes de su clínica: agenda, lista, lee, reagenda, asigna profesional y da de baja. **La asignación no acota el alcance**: un veterinario alcanza las citas de los pacientes de su clínica le toquen a él o a un colega. Que le asignen una cita es organización del trabajo, no un permiso. |
+| Tutor | Solo las citas de sus propias mascotas. Lee, reagenda (fecha_programada) y decide si quiere que le avisen (notificar_tutor), y puede darlas de baja. No agenda citas nuevas, no cambia el tipo ni asigna profesional: qué control corresponde y quién lo hace son criterio de la clínica. |
 | Clínica_admin | Sin acceso: el calendario cuelga del Paciente, y su rol no alcanza las mascotas atendidas. |
 
 > El listado de pacientes es un endpoint con dos alcances: cuál aplica lo decide el rol del token, nunca un parámetro del cliente. El veterinario ve la cartera de su clínica; el tutor, sus mascotas.
@@ -244,11 +246,12 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 
 ### 4.4 Ciclo de vida de una cita
 
-1. Creación: el Veterinario programa una Cita con fecha y hora, en estado = "pendiente". La hora tiene que caer dentro del horario de atención de la clínica del paciente y sobre su grilla de turnos (regla 2.2).
-2. Confirmación o reagenda: el Tutor puede modificar fecha_programada y notificar_tutor dentro de los permisos definidos (sección 3.2), pero no puede cambiar estado directamente. Solo se reagenda una cita pendiente (regla 2.2).
-3. Transición a "cumplido": ocurre cuando el Veterinario carga un Evento clínico con `cita_id` apuntando a esa Cita (Modelo de Datos, 4.5). Se valida que la Cita sea del mismo Paciente que el evento y que no esté ya cumplida. Una Cita **vencida** también pasa a cumplido por esta vía: la mascota llegó tarde y se la atendió igual, y dejarla vencida para siempre falsearía el historial.
-4. Transición a "vencido": la cita cuya fecha_programada ya pasó sin haber sido marcada como cumplida cambia de estado automáticamente. Este es un proceso batch/programado, no una acción de usuario.
-5. Baja: retirar del calendario una cita que no va a ocurrir es una baja lógica, no un estado. La puede hacer el veterinario de la clínica o el tutor de la mascota (regla 2.4).
+1. Creación: el Veterinario programa una Cita con fecha y hora, en estado = "pendiente". La hora tiene que caer dentro del horario de atención de la clínica del paciente y sobre su grilla de turnos (regla 2.2). Puede asignarle un profesional o dejarla de la clínica para repartirla después.
+2. Asignación o reasignación: el Veterinario asigna, cambia o quita el profesional mientras la cita siga pendiente. Se valida que no le quede otra cita en el mismo momento (regla 2.2). Sacar la asignación es dejarla de nuevo de la clínica, no darla de baja.
+3. Confirmación o reagenda: el Tutor puede modificar fecha_programada y notificar_tutor dentro de los permisos definidos (sección 3.2), pero no puede cambiar estado directamente. Solo se reagenda una cita pendiente (regla 2.2).
+4. Transición a "cumplido": ocurre cuando el Veterinario carga un Evento clínico con `cita_id` apuntando a esa Cita (Modelo de Datos, 4.5). Se valida que la Cita sea del mismo Paciente que el evento y que no esté ya cumplida. Una Cita **vencida** también pasa a cumplido por esta vía: la mascota llegó tarde y se la atendió igual, y dejarla vencida para siempre falsearía el historial.
+5. Transición a "vencido": la cita cuya fecha_programada ya pasó sin haber sido marcada como cumplida cambia de estado automáticamente. Este es un proceso batch/programado, no una acción de usuario.
+6. Baja: retirar del calendario una cita que no va a ocurrir es una baja lógica, no un estado. La puede hacer el veterinario de la clínica o el tutor de la mascota (regla 2.4).
 
 > El mecanismo elegido es un job programado (ver sección 4.6) — lo que se fija acá es la regla de negocio: una cita vencida nunca queda indefinidamente en estado "pendiente".
 

@@ -32,6 +32,8 @@ Usuario N───1 Clínica  (si tipo_usuario = clínica_admin)
 Usuario N───1 Clínica  (clínica_de_pertenencia_id: veterinario y clínica_admin)
 
 Auditoría ──registra cambios de──> Evento clínico, Medicación, Cita, Paciente, Adjuntos
+
+Cita N───1 Veterinario  (veterinario_id: a quién le toca atender, opcional)
 ```
 
 ## 3. Campos transversales
@@ -187,6 +189,7 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 | paciente_id | UUID / FK | — |
 | tipo | enum | Próxima vacuna / control / cirugía programada. |
 | fecha_programada | timestamp | Momento de la cita, con hora. Cae dentro del horario de atención de la clínica y sobre la grilla de turnos (4.3). |
+| veterinario_id | UUID / FK (nullable) | Profesional que va a atender. NULL cuando la cita es de la clínica y todavía no se repartió. |
 | estado | enum | Pendiente / cumplido / vencido. |
 | notificar_tutor | boolean | Dispara notificación al tutor. |
 
@@ -194,9 +197,13 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 
 > `fecha_programada` era una fecha sin hora en la primera versión de esta tabla. Pasó a timestamp porque una agenda de veterinaria sin hora no es una agenda: dos cirugías el mismo martes no son intercambiables, y el calendario no podía mostrar más que "hay algo ese día". El costo asumido es que ahora hay una zona horaria en juego — se persiste en UTC y se presenta en `America/Argentina/Buenos_Aires`, que es la zona de operación del MVP y la misma que ya usan los logs (Backend, doc 07).
 >
-> La Cita **sigue sin llevar `veterinario_id`**, aun con hora. A diferencia de Evento clínico y Medicación, ninguna regla se apoya en su autor: la baja no está reservada a quien la creó y el alcance se resuelve contra la mascota. Quién la programó y quién la reagendó queda en Auditoría, que es donde se lo consulta.
+> `veterinario_id` entró después de la primera versión de esta tabla, y no significa lo mismo que en Evento clínico o Medicación. Ahí el campo es **autoría** —quién escribió el registro clínico, dato que no se reasigna nunca—; acá es **asignación**: a quién le toca atender, y se puede cambiar mientras la cita siga pendiente. Quién la programó y quién la reagendó sigue estando en Auditoría, que es donde se lo consulta.
 >
-> La consecuencia de esa ausencia es que la agenda es **de la clínica, no de cada profesional**: dos citas del mismo horario no colisionan, porque no hay a quién asignárselas. Es una limitación conocida y no un descuido — asignar profesional cambia el motor de permisos (el alcance de la Cita pasaría a tener un segundo eje) y es el paso siguiente, no este.
+> Es **nullable a propósito**. Una cita puede nacer "de la clínica" y repartirse después, y una clínica chica que no divide agenda no tiene por qué elegir profesional en cada turno. Las citas ya cargadas cuando se agregó el campo quedaron sin asignar, que es lo que efectivamente eran: inventarles un profesional habría falseado el dato.
+>
+> Un veterinario **no puede tener dos citas pendientes en el mismo momento** (Reglas de Negocio, 2.2), y eso es lo que hace que la asignación signifique algo. Las citas sin asignar no colisionan entre sí: sin profesional no hay a quién solapar.
+>
+> El **alcance no cambia**: se sigue resolviendo contra la mascota. Que a un veterinario le toque una cita no le da acceso a esa mascota, ni que no le toque se lo quita — cualquiera del plantel atiende a los pacientes de su clínica. La asignación es organización del trabajo, no un permiso.
 
 ### 4.8 Adjuntos
 
