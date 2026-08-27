@@ -186,13 +186,17 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 | id | UUID / PK | Identificador único. |
 | paciente_id | UUID / FK | — |
 | tipo | enum | Próxima vacuna / control / cirugía programada. |
-| fecha_programada | date | — |
+| fecha_programada | timestamp | Momento de la cita, con hora. Cae dentro del horario de atención de la clínica y sobre la grilla de turnos (4.3). |
 | estado | enum | Pendiente / cumplido / vencido. |
 | notificar_tutor | boolean | Dispara notificación al tutor. |
 
 > `estado` no es un campo que el cliente escriba: nace en `pendiente`, pasa a `cumplido` cuando se carga el Evento clínico que la referencia por `cita_id` (4.5) y a `vencido` por el job programado (Reglas de Negocio, 4.6). No hay endpoint que lo reciba — exponerlo dejaría marcar como cumplida una cita que nadie atendió.
 
-> La Cita no lleva `veterinario_id`. A diferencia de Evento clínico y Medicación, ninguna regla se apoya en su autor: la baja no está reservada a quien la creó y el alcance se resuelve contra la mascota. Quién la programó y quién la reagendó queda en Auditoría, que es donde se lo consulta.
+> `fecha_programada` era una fecha sin hora en la primera versión de esta tabla. Pasó a timestamp porque una agenda de veterinaria sin hora no es una agenda: dos cirugías el mismo martes no son intercambiables, y el calendario no podía mostrar más que "hay algo ese día". El costo asumido es que ahora hay una zona horaria en juego — se persiste en UTC y se presenta en `America/Argentina/Buenos_Aires`, que es la zona de operación del MVP y la misma que ya usan los logs (Backend, doc 07).
+>
+> La Cita **sigue sin llevar `veterinario_id`**, aun con hora. A diferencia de Evento clínico y Medicación, ninguna regla se apoya en su autor: la baja no está reservada a quien la creó y el alcance se resuelve contra la mascota. Quién la programó y quién la reagendó queda en Auditoría, que es donde se lo consulta.
+>
+> La consecuencia de esa ausencia es que la agenda es **de la clínica, no de cada profesional**: dos citas del mismo horario no colisionan, porque no hay a quién asignárselas. Es una limitación conocida y no un descuido — asignar profesional cambia el motor de permisos (el alcance de la Cita pasaría a tener un segundo eje) y es el paso siguiente, no este.
 
 ### 4.8 Adjuntos
 

@@ -57,8 +57,9 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Vista rápida de medicación activa por paciente.
 
 ### 3.6 Calendario / Citas (rol: Veterinario)
-- Creación de citas (vacuna, control, cirugía programada).
-- Vista de citas pendientes y vencidas de la clínica.
+- Creación de citas (vacuna, control, cirugía programada) con **fecha y hora**, sobre la grilla que definen el horario de atención y la duración del turno de la clínica (3.2). Las horas fuera de la grilla no se ofrecen: el backend las rechaza igual, pero ofrecerlas y después fallar es un error que la interfaz puede evitar.
+- Vista de citas pendientes y vencidas de la clínica, por día, semana y mes.
+- La agenda es **de la clínica, no de cada profesional**: la Cita no lleva veterinario asignado en el MVP (Modelo de Datos, 4.7). Dos citas del mismo horario no colisionan, y la vista no debe sugerir que sí.
 
 ## 4. Pantallas mínimas — Móvil (Veterinario)
 
@@ -82,13 +83,13 @@ Mismo conjunto funcional que las secciones 3.3 a 3.6, adaptado a formato móvil.
 - Sin permisos de edición sobre ningún dato clínico (regla de la matriz de permisos).
 
 ### 5.4 Calendario
-- Vista de citas pendientes y su fecha programada.
-- Confirmar o solicitar reagenda de una cita (sin poder cambiar el estado directamente, según proceso 4.4 de Reglas de Negocio).
+- Vista de citas pendientes con su fecha **y hora**.
+- Confirmar o solicitar reagenda de una cita (sin poder cambiar el estado directamente, según proceso 4.4 de Reglas de Negocio). Al reagendar, el tutor elige entre las horas válidas de la clínica que atiende a su mascota, igual que el veterinario.
 
 ### 5.5 Notificaciones
-- Recordatorio push el día anterior a una cita y el mismo día, sobre las citas con `notificar_tutor` habilitado (Reglas de Negocio, 4.15).
+- Recordatorio push el día anterior a una cita —a una hora fija— y otro un par de horas antes del turno, sobre las citas con `notificar_tutor` habilitado (Reglas de Negocio, 4.15).
 - La app registra el dispositivo al iniciar sesión y lo da de baja al cerrarla: una cuenta sin dispositivo registrado no recibe avisos.
-- El aviso dice qué mascota y qué día; nunca contenido clínico. Una notificación se lee en la pantalla bloqueada del teléfono.
+- El aviso dice qué mascota, qué día y a qué hora; nunca contenido clínico. Una notificación se lee en la pantalla bloqueada del teléfono.
 
 ### 5.6 Adjuntos
 - Subida de archivos (ej. ficha histórica en papel, foto de una herida) asociados al paciente.
