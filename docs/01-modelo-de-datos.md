@@ -103,6 +103,7 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 | hora_apertura | time | Hora a la que la clínica empieza a atender. |
 | hora_cierre | time | Hora a la que deja de atender. Posterior a `hora_apertura`. |
 | duración_turno_minutos | int | Largo del turno con el que se agenda. Define la grilla del calendario. |
+| zona_horaria | string | Zona IANA en la que se interpretan el horario de atención y la hora de las Citas. Por defecto `America/Argentina/Buenos_Aires`. |
 
 > Los tres campos de agenda entraron después de la primera versión de esta tabla, junto con la decisión de darle hora a la Cita (4.7): sin ellos, una cita con hora se puede agendar a cualquier minuto de cualquier momento del día, y el calendario deja de ser una grilla para pasar a ser una lista de instantes sueltos.
 >
@@ -110,6 +111,12 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 >
 > `duración_turno_minutos` es de la Clínica y no del Veterinario porque en el MVP la agenda es de la clínica: no hay agenda por profesional (ver la nota de 4.7 sobre por qué la Cita no lleva `veterinario_id`). Debe ser mayor a cero y dividir de forma exacta el intervalo de atención, o la grilla deja un hueco al final del día.
 >
+> `zona_horaria` entró después de que el cliente y el backend tuvieran la zona escrita a mano cada uno por su lado. Es un dato de la clínica y no una constante del sistema: `hora_apertura` dice "09:00" sin decir 09:00 de dónde, y esa pregunta la contesta la clínica, no el despliegue. Mientras estuvo hardcodeada, además, no había forma de que el cliente supiera qué zona usar salvo repetir la constante y confiar en que nadie la cambiara de un solo lado.
+>
+> Se guarda el **nombre IANA** (`America/Argentina/Buenos_Aires`) y no un desfasaje fijo: un desfasaje queda viejo cuando el país cambia de huso o adopta horario de verano, y convierte una decisión de política pública en un dato a corregir a mano en cada clínica.
+>
+> El valor por defecto cubre al piloto y a cualquier clínica argentina, que es el alcance del MVP. Que exista el campo es lo que hace que la segunda clínica, en otro huso, sea una fila más y no una migración.
+
 > No se modelan **especialidades**, ni de la clínica ni del veterinario. Ninguna regla de negocio ni pantalla del MVP las consume: serían un dato que se carga y nadie lee. Cuando exista el criterio que las use (derivar una urgencia, filtrar el plantel), ahí se decide si son un enum fijo o una entidad propia.
 
 ### 4.4 Veterinario
@@ -195,7 +202,7 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 
 > `estado` no es un campo que el cliente escriba: nace en `pendiente`, pasa a `cumplido` cuando se carga el Evento clínico que la referencia por `cita_id` (4.5) y a `vencido` por el job programado (Reglas de Negocio, 4.6). No hay endpoint que lo reciba — exponerlo dejaría marcar como cumplida una cita que nadie atendió.
 
-> `fecha_programada` era una fecha sin hora en la primera versión de esta tabla. Pasó a timestamp porque una agenda de veterinaria sin hora no es una agenda: dos cirugías el mismo martes no son intercambiables, y el calendario no podía mostrar más que "hay algo ese día". El costo asumido es que ahora hay una zona horaria en juego — se persiste en UTC y se presenta en `America/Argentina/Buenos_Aires`, que es la zona de operación del MVP y la misma que ya usan los logs (Backend, doc 07).
+> `fecha_programada` era una fecha sin hora en la primera versión de esta tabla. Pasó a timestamp porque una agenda de veterinaria sin hora no es una agenda: dos cirugías el mismo martes no son intercambiables, y el calendario no podía mostrar más que "hay algo ese día". El costo asumido es que ahora hay una zona horaria en juego — se persiste en UTC y se presenta en la `zona_horaria` de la clínica que atiende a la mascota (4.3).
 >
 > `veterinario_id` entró después de la primera versión de esta tabla, y no significa lo mismo que en Evento clínico o Medicación. Ahí el campo es **autoría** —quién escribió el registro clínico, dato que no se reasigna nunca—; acá es **asignación**: a quién le toca atender, y se puede cambiar mientras la cita siga pendiente. Quién la programó y quién la reagendó sigue estando en Auditoría, que es donde se lo consulta.
 >
