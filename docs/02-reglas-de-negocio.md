@@ -37,6 +37,9 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Campo estructurado según el tipo | Evento clínico | `campo_estructurado` se valida contra el esquema fijo del `tipo` del evento (Modelo de Datos, 4.5): obligatorio y con forma exigida para vacuna, medicación y alergia, y NULL para consulta, cirugía, control y urgencia. Un JSON con claves ajenas al esquema, con faltantes, o presente en un tipo que no lo admite, se rechaza. |
 | Una medicación activa por droga | Medicación | No se permite crear una nueva Medicación con fecha_fin NULL para una droga que el paciente ya tiene activa. Debe cerrarse la anterior (fecha_fin) antes de abrir una nueva. |
 | Paciente fijo a una clínica | Paciente | clínica_id no es editable una vez creado el paciente en el MVP. Reasignar de clínica está fuera de alcance hasta Fase 2. |
+| Horario de atención coherente | Clínica | hora_cierre tiene que ser posterior a hora_apertura. No se admite un horario que cruce la medianoche: una guardia nocturna es un caso que el MVP no modela, y aceptarlo acá lo haría parecer soportado. |
+| Turno que divide el horario | Clínica | duración_turno_minutos tiene que ser mayor a cero y dividir de forma exacta el intervalo entre apertura y cierre. Si no divide, el último turno del día queda cortado por el cierre y la grilla miente sobre cuántos turnos entran. |
+| Horario que no invalida lo agendado | Clínica | Achicar el horario de atención o cambiar la duración del turno **no reagenda ni cancela** las Citas pendientes que quedan fuera del horario nuevo. Se rechaza el cambio mientras existan: mover la agenda de una mascota es una decisión clínica, no un efecto colateral de editar la configuración de la clínica. |
 | Consentimiento previo a alta de paciente | Tutor, Paciente | No se puede dar de alta un Paciente si el Tutor asociado no tiene consentimiento_datos = true. |
 | Fecha no pasada | Cita | fecha_programada no puede ser anterior a la fecha actual, ni al crear ni al reagendar. Es la regla espejo del Evento clínico: lo que ya ocurrió se registra como evento, lo que va a ocurrir se agenda como cita. Una cita creada en el pasado nacería vencida. |
 | Paciente vigente para agendar | Cita | No se agendan Citas nuevas sobre un Paciente con `deleted_at`. Las ya programadas siguen consultables (regla 4.5). |
@@ -143,6 +146,16 @@ Sobre la Cita, el alcance se resuelve así:
 > El listado de pacientes es un endpoint con dos alcances: cuál aplica lo decide el rol del token, nunca un parámetro del cliente. El veterinario ve la cartera de su clínica; el tutor, sus mascotas.
 
 Sobre la ficha de Veterinario (el plantel de la clínica), el alcance se resuelve así:
+
+Sobre la Clínica, el alcance se resuelve así:
+
+| Rol | Regla de alcance sobre Clínica |
+|---|---|
+| Clínica_admin | Su propia clínica, la de su `clínica_id`: la lee y edita sus datos administrativos (nombre, dirección, contacto) y su horario de atención. **No la da de alta ni de baja** — eso es del administrador de la plataforma, fuera de la API (proceso 4.10). |
+| Veterinario | Solo lectura de la clínica a la que pertenece, vía su `clínica_de_pertenencia_id`. La necesita para agendar: sin el horario de atención y la duración del turno no puede saber qué horas son válidas (regla 2.2). No la edita. |
+| Tutor | Sin acceso. Su relación es con la mascota y con quien la atiende, no con la entidad administrativa. |
+
+> Que el clínica_admin **edite** su propia clínica no estaba en la primera versión de este documento: la matriz del Modelo de Datos la daba como escritura exclusiva del administrador de la plataforma, mientras que Alcance de Plataformas 3.2 pedía la pantalla de edición desde la web. Era una contradicción entre dos documentos del mismo contrato. Se resolvió a favor de Alcance de Plataformas: el alta sigue siendo del administrador de la plataforma, la edición pasa a ser del clínica_admin. Que una clínica corrija su propio teléfono no puede depender de abrirle un ticket a Wayka.
 
 | Rol | Regla de alcance sobre Veterinario |
 |---|---|

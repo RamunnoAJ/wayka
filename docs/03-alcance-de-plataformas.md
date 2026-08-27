@@ -34,7 +34,8 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 ### 3.2 Panel de clínica (rol: Clínica_admin)
 - Alta, edición y baja lógica de Veterinarios asociados a la clínica. La ficha y la cuenta de acceso se crean juntas, en una sola operación (proceso 4.12 de Reglas de Negocio), y la baja de la ficha desactiva la cuenta (4.13).
 - La clínica y su propia cuenta de administrador no se crean desde acá: las da de alta el administrador de la plataforma (proceso 4.10 de Reglas de Negocio).
-- Edición de datos administrativos de la Clínica (nombre, dirección, contacto).
+- Edición de datos administrativos de la Clínica (nombre, dirección, contacto) y de su **horario de atención**: hora de apertura, hora de cierre y duración del turno. Los tres definen la grilla con la que el veterinario agenda (Modelo de Datos, 4.3), así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
+- El horario no se puede achicar mientras existan Citas pendientes que queden afuera del horario nuevo (regla 2.2): la pantalla tiene que decir cuáles son, no solo que la operación falló.
 - Sin acceso a historial clínico ni medicación de pacientes (regla de alcance ya definida).
 
 ### 3.3 Gestión de pacientes (rol: Veterinario)

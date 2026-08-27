@@ -98,6 +98,17 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 | nombre | string | — |
 | dirección | string | — |
 | contacto | string | — |
+| hora_apertura | time | Hora a la que la clínica empieza a atender. |
+| hora_cierre | time | Hora a la que deja de atender. Posterior a `hora_apertura`. |
+| duración_turno_minutos | int | Largo del turno con el que se agenda. Define la grilla del calendario. |
+
+> Los tres campos de agenda entraron después de la primera versión de esta tabla, junto con la decisión de darle hora a la Cita (4.7): sin ellos, una cita con hora se puede agendar a cualquier minuto de cualquier momento del día, y el calendario deja de ser una grilla para pasar a ser una lista de instantes sueltos.
+>
+> `hora_apertura` y `hora_cierre` son un **único intervalo para toda la semana**, no un horario por día ni con corte de mediodía. Es la simplificación deliberada del MVP: un horario por día multiplica por siete la configuración, y con una sola clínica piloto todavía no hay evidencia de que haga falta. El día que la haya, este es el campo que se promueve a una tabla de franjas — no un campo al que se le agregan casos especiales.
+>
+> `duración_turno_minutos` es de la Clínica y no del Veterinario porque en el MVP la agenda es de la clínica: no hay agenda por profesional (ver la nota de 4.7 sobre por qué la Cita no lleva `veterinario_id`). Debe ser mayor a cero y dividir de forma exacta el intervalo de atención, o la grilla deja un hueco al final del día.
+>
+> No se modelan **especialidades**, ni de la clínica ni del veterinario. Ninguna regla de negocio ni pantalla del MVP las consume: serían un dato que se carga y nadie lee. Cuando exista el criterio que las use (derivar una urgencia, filtrar el plantel), ahí se decide si son un enum fijo o una entidad propia.
 
 ### 4.4 Veterinario
 
@@ -299,7 +310,8 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 | Usuario (cuentas de veterinario) | Clínica_admin, sobre las cuentas de su propia clínica | Clínica_admin (las de su clínica) + el propio usuario sobre su cuenta |
 | Usuario (cuenta propia) | Cada usuario sobre su email y su contraseña | Cada usuario sobre su cuenta |
 | Usuario (cuentas de tutor) | Solo el propio tutor (auto-registro) | Solo el propio tutor |
-| Usuario (cuentas de clínica_admin) y Clínica | Administrador de la plataforma, fuera de la API | Clínica_admin sobre su propia clínica |
+| Clínica (datos administrativos y horario de atención) | Alta: administrador de la plataforma, fuera de la API. Edición: clínica_admin sobre su propia clínica | Clínica_admin sobre su propia clínica. Veterinario de esa clínica, solo lectura: necesita el horario de atención para agendar |
+| Usuario (cuentas de clínica_admin) | Administrador de la plataforma, fuera de la API | Clínica_admin sobre su propia cuenta |
 
 > El alcance del veterinario sobre la ficha de Tutor no está acotado a su clínica, a diferencia del que tiene sobre Paciente. El motivo es el proceso de alta de paciente (Reglas de Negocio, 4.1): la ficha del tutor se busca y se completa antes de que exista ningún Paciente que vincule a esa persona con una clínica, así que no hay dato sobre el cual acotarla. Es una excepción deliberada, a revisar cuando exista la entidad Paciente.
 
