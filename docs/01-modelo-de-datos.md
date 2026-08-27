@@ -232,6 +232,7 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 | veterinario_id | UUID / FK (nullable) | Completo solo si tipo_usuario = veterinario. |
 | clínica_id | UUID / FK (nullable) | Completo solo si tipo_usuario = clínica_admin. |
 | clínica_de_pertenencia_id | UUID / FK (nullable) | Clínica a la que pertenece la cuenta, independiente de la FK de rol. NULL para tutor; obligatoria para veterinario; igual a clínica_id para clínica_admin. |
+| activación_pendiente | boolean | `true` entre que la línea de comandos crea la cuenta de clínica_admin y que alguien la estrena. Solo mientras vale `true` la cuenta puede no tener ningún método de autenticación. |
 | último_acceso | timestamp (nullable) | Fecha del último login exitoso. |
 | activo | boolean | Permite desactivar la cuenta sin afectar el historial que generó. |
 
@@ -240,6 +241,10 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 > `clínica_de_pertenencia_id` existe porque el motor de permisos necesita acotar el alcance de un clínica_admin sobre las cuentas de su clínica, y `clínica_id` solo lo llevan las cuentas administrativas: la clínica de un veterinario vive en la tabla Veterinario. Sin este campo el alcance no sería evaluable sobre una cuenta de veterinario y quedaría abierto — un clínica_admin podría administrar cuentas de otra clínica. Es una denormalización deliberada al servicio del motor de permisos, no un reemplazo de `Veterinario.clínica_id`. Una cuenta sin pertenencia (tutor) queda fuera del alcance de cualquier clínica.
 >
 > Un Usuario debe tener al menos uno de password_hash o google_id no nulo — nunca ambos NULL, o no tendría forma de autenticarse. Ver Reglas de Negocio, sección 2.1, para el detalle de esta validación y el proceso de vinculación de cuenta Google.
+>
+> `activación_pendiente` es lo que hace expresable la única excepción a esa regla. Existe como campo y no como "deducilo de que no tiene ninguno de los dos" porque la restricción vive en la base, y una restricción no puede consultar otra tabla para saber si hay un token de activación sin usar. El campo pasa a `false` en la misma transacción en que se escribe la contraseña (proceso 4.16), así que la ventana en que la excepción aplica es exactamente la que dura la activación.
+>
+> No se expone en la API. `tiene_contrasena` y `tiene_google_vinculado` en `false` a la vez ya dicen lo mismo para quien lo necesite, y agregar el campo invitaría a que un cliente decida algo a partir de él.
 >
 > Los tokens de refresco viven en una tabla `sesión` aparte, que **no es una entidad de dominio**: no la lee ni la escribe ninguna regla de negocio fuera de la autenticación, no se audita y no aparece en el motor de permisos. Guarda el hash del token (nunca el token), el canal de origen, la cadena de rotación y su vencimiento. Su diseño está en Arquitectura, sección 4.2.
 
