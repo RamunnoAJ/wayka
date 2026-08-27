@@ -20,7 +20,7 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Documento único | Tutor, Veterinario | número_documento no puede repetirse entre personas del mismo tipo_documento. En Tutor la validación aplica solo a las fichas que ya tienen documento cargado: el auto-registro (4.9) no lo exige. Se valida tanto en el alta como en la edición de la ficha, y el tipo y el número se cargan o se limpian juntos: una ficha nunca tiene uno sin el otro. |
 | Email único | Usuario | email no puede repetirse en todo el sistema, independientemente del tipo_usuario. |
 | Un solo rol activo por cuenta | Usuario | Exactamente una de tutor_id / veterinario_id / clínica_id debe estar completa, según tipo_usuario. Las otras dos deben ser NULL. |
-| Al menos un método de autenticación | Usuario | password_hash y google_id no pueden ser ambos NULL — un Usuario necesita al menos una forma de autenticarse. |
+| Al menos un método de autenticación | Usuario | password_hash y google_id no pueden ser ambos NULL — un Usuario necesita al menos una forma de autenticarse. **Única excepción**: la cuenta de clínica_admin entre que la crea la línea de comandos y que se activa (proceso 4.16). Mientras tanto no puede autenticarse por ninguna vía, que es exactamente lo que se busca: la cuenta existe pero todavía no la estrenó nadie. Al canjear el token deja de ser una excepción y la regla vuelve a regir sin matices. |
 | Google ID único | Usuario | google_id no puede repetirse — una cuenta de Google solo puede estar vinculada a un Usuario de Wayka. |
 | Política de contraseña | Usuario | Mínimo 8 caracteres, con al menos una letra minúscula, una mayúscula y un dígito. Rige tanto el alta como el cambio de contraseña. |
 | Clínica de pertenencia según rol | Usuario | clínica_de_pertenencia_id debe ser NULL en las cuentas de tutor, estar completa en las de veterinario, y coincidir con clínica_id en las de clínica_admin. |
@@ -147,8 +147,6 @@ Sobre la Cita, el alcance se resuelve así:
 
 > El listado de pacientes es un endpoint con dos alcances: cuál aplica lo decide el rol del token, nunca un parámetro del cliente. El veterinario ve la cartera de su clínica; el tutor, sus mascotas.
 
-Sobre la ficha de Veterinario (el plantel de la clínica), el alcance se resuelve así:
-
 Sobre la Clínica, el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Clínica |
@@ -158,6 +156,8 @@ Sobre la Clínica, el alcance se resuelve así:
 | Tutor | Sin acceso. Su relación es con la mascota y con quien la atiende, no con la entidad administrativa. |
 
 > Que el clínica_admin **edite** su propia clínica no estaba en la primera versión de este documento: la matriz del Modelo de Datos la daba como escritura exclusiva del administrador de la plataforma, mientras que Alcance de Plataformas 3.2 pedía la pantalla de edición desde la web. Era una contradicción entre dos documentos del mismo contrato. Se resolvió a favor de Alcance de Plataformas: el alta sigue siendo del administrador de la plataforma, la edición pasa a ser del clínica_admin. Que una clínica corrija su propio teléfono no puede depender de abrirle un ticket a Wayka.
+
+Sobre la ficha de Veterinario (el plantel de la clínica), el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Veterinario |
 |---|---|
@@ -254,7 +254,20 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 
 Cuando se da de baja lógica un Paciente, sus Eventos clínicos, Medicación, Citas y Adjuntos NO se borran automáticamente en cascada. Quedan visibles y consultables desde el Paciente (aunque el Paciente ya no aparezca en listados activos), preservando la trazabilidad completa del historial. Solo un borrado lógico explícito sobre cada entidad hija la retira de las vistas activas de esa entidad en particular.
 
+Que el historial siga consultable exige que **la ficha del Paciente también lo esté**: sin poder leer la mascota no hay desde dónde consultar lo que cuelga de ella. La lectura por id de un Paciente dado de baja devuelve la ficha, con `deleted_at` completo (Modelo de Datos, 4.2). Lo que se rechaza es la escritura:
+
+| Operación sobre un Paciente con `deleted_at` | Resultado |
+|---|---|
+| Leer la ficha por id | Devuelve la ficha, con `deleted_at` completo. |
+| Listarla entre los pacientes de la clínica o del tutor | No aparece: los listados filtran por `deleted_at IS NULL`. |
+| Leer su historial, medicación, citas y adjuntos | Se consultan normalmente. |
+| Editar la ficha, o darla de baja otra vez | Se rechaza. |
+| Cargar Eventos clínicos, Medicación, Citas o Adjuntos nuevos | Se rechaza (reglas 2.2). |
+| Editar o dar de baja los registros ya existentes | Se permite: corregir un diagnóstico mal cargado no depende de que la mascota siga en la cartera. |
+
 > Esta regla prioriza no perder trazabilidad clínica por sobre la simplicidad de un borrado en cascada — es consistente con el criterio de trazabilidad y no destrucción definido en el Modelo de Datos.
+>
+> El detalle de la lectura por id se agregó después de la primera versión de esta sección. La regla ya decía que el historial quedaba consultable, pero no decía explícitamente que la ficha misma se leyera, y la API terminó devolviendo un 404 sobre el Paciente mientras sus entidades hijas seguían respondiendo. Era una contradicción del contrato consigo mismo, no una decisión.
 
 ### 4.6 Transición automática de citas vencidas (job programado)
 
@@ -269,20 +282,7 @@ Cuando se da de baja lógica un Paciente, sus Eventos clínicos, Medicación, Ci
 
 1. El cliente (web o móvil) obtiene un ID token de Google y lo envía al backend.
 2. El backend verifica ese token contra Google (firma, expiración, audiencia) — nunca confía en el email que el cliente afirma tener sin esa verificación.
-Que el historial siga consultable exige que **la ficha del Paciente también lo esté**: sin poder leer la mascota no hay desde dónde consultar lo que cuelga de ella. La lectura por id de un Paciente dado de baja devuelve la ficha, con `deleted_at` completo (Modelo de Datos, 4.2). Lo que se rechaza es la escritura:
-
-| Operación sobre un Paciente con `deleted_at` | Resultado |
-|---|---|
-| Leer la ficha por id | Devuelve la ficha, con `deleted_at` completo. |
-| Listarla entre los pacientes de la clínica o del tutor | No aparece: los listados filtran por `deleted_at IS NULL`. |
-| Leer su historial, medicación, citas y adjuntos | Se consultan normalmente. |
-| Editar la ficha, o darla de baja otra vez | Se rechaza. |
-| Cargar Eventos clínicos, Medicación, Citas o Adjuntos nuevos | Se rechaza (reglas 2.2). |
-| Editar o dar de baja los registros ya existentes | Se permite: corregir un diagnóstico mal cargado no depende de que la mascota siga en la cartera. |
-
 3. Se busca un Usuario existente por email:
->
-> El detalle de la lectura por id se agregó después de la primera versión de esta sección. La regla ya decía que el historial quedaba consultable, pero no decía explícitamente que la ficha misma se leyera, y la API terminó devolviendo un 404 sobre el Paciente mientras sus entidades hijas seguían respondiendo. Era una contradicción del contrato consigo mismo, no una decisión.
    - **Si existe** (por ejemplo, fue creado antes con email + contraseña), se vincula google_id y avatar_url a ese Usuario existente. No se crea una cuenta duplicada.
    - **Si no existe**, la creación de una cuenta nueva vía Google solo está permitida dentro del flujo de auto-registro de tutor (4.9) — ahí Google es un método alternativo a la contraseña, no una vía de alta distinta. Para veterinario y clínica_admin, Google únicamente puede vincularse a una cuenta ya existente (caso anterior); si no hay ninguna, el login se rechaza — esas cuentas solo se crean por los procesos definidos en 2.5.
 4. El bloqueo de canal (regla 2.3) se valida igual que con cualquier otro método de autenticación — Google no es una vía para evadirlo.
@@ -312,10 +312,13 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 ### 4.10 Alta de una clínica y de su cuenta administrativa
 
 1. El administrador de la plataforma da de alta la Clínica y su cuenta clínica_admin en una sola operación, por fuera de la API HTTP (una herramienta de línea de comandos que invoca la misma capa de negocio).
-2. La cuenta se crea con clínica_id y clínica_de_pertenencia_id apuntando a la clínica recién creada, y con una contraseña inicial que el administrador entrega a la clínica.
-3. A partir de ahí, ese clínica_admin es responsable de dar de alta las cuentas de los veterinarios de su clínica (regla 2.5).
+2. La cuenta se crea con clínica_id y clínica_de_pertenencia_id apuntando a la clínica recién creada, y **sin contraseña**: la define la propia clínica al estrenarla (proceso 4.16). La clínica nace con un horario de atención por defecto, editable desde la web.
+3. La herramienta emite un **token de activación de un solo uso** y lo imprime una única vez. El administrador se lo entrega a la clínica por el canal que haya acordado con ella; el sistema no lo envía por email ni lo vuelve a mostrar.
+4. A partir de ahí, ese clínica_admin es responsable de dar de alta las cuentas de los veterinarios de su clínica (regla 2.5).
 
 > El administrador de la plataforma no es un tipo_usuario del sistema: no tiene cuenta, no se autentica y no aparece en el motor de permisos. Es un operador con acceso al despliegue. Si en algún momento esa responsabilidad se delega o necesita ser auditada, habrá que decidir explícitamente la creación de un cuarto rol.
+>
+> La contraseña inicial la fijaba el administrador en la primera versión de este proceso. Se cambió por el token porque una contraseña que el operador conoce, escribe en algún lado y transmite por un canal cualquiera es una contraseña compartida desde el minuto cero, y la cuenta que protege administra el plantel entero de una clínica. Con el token, nadie fuera de la clínica llega a conocer la credencial con la que se entra.
 
 ### 4.12 Alta de un veterinario
 
@@ -359,6 +362,20 @@ El calendario existe para que la mascota llegue a su control; el recordatorio es
 5. **Teléfono rechazado**: cuando el proveedor informa que un aparato dejó de existir (la app se desinstaló, el token caducó), ese Dispositivo se da de baja en vez de reintentarse. Reintentar contra un teléfono que ya no existe gasta los intentos de la notificación sin ninguna chance de éxito. Un aviso que no llegó a ningún aparato no se da por enviado.
 6. **Destinatario**: la cuenta del tutor de la mascota, resuelta al encolar. Una ficha de tutor sin cuenta de Usuario no recibe avisos: no hay a dónde mandarlos. Los **dispositivos** de esa cuenta, en cambio, se resuelven recién al despachar, porque entre encolar y enviar pasan horas y el tutor puede haber registrado su primer teléfono en el medio.
 7. Las notificaciones **no se auditan**: la Auditoría registra cambios sobre entidades clínicas (Modelo de Datos, 4.10), y un aviso no modifica el historial. Su rastro es la propia tabla, que guarda qué se envió, cuándo y con qué resultado.
+
+### 4.16 Activación de la cuenta de clínica_admin
+
+1. El clínica_admin abre el enlace de activación con el token que le entregó el administrador de la plataforma.
+2. El backend valida el token: que exista, que no esté usado, que no esté vencido y que su cuenta siga activa. Cualquiera de esas condiciones que falle devuelve **el mismo error genérico**: distinguir "vencido" de "inexistente" le dice a quien esté probando tokens al azar cuál acertó a medias.
+3. La persona define su contraseña, que se valida contra la política de la regla 2.1 (mínimo 8 caracteres, una minúscula, una mayúscula y un dígito).
+4. En una sola transacción se escribe el `password_hash` de la cuenta y se marca el token como usado. Es de un solo uso: presentarlo de nuevo falla, aunque quien lo presente sea la misma persona.
+5. El canje **no autentica**: devuelve el resultado de la operación, no un par de tokens. Para entrar hay que iniciar sesión con la contraseña recién definida, que pasa por el bloqueo de canal como cualquier otro login (regla 2.3).
+
+> Es el segundo endpoint público del sistema, junto con el auto-registro de tutor (4.9), y el único que escribe sobre una cuenta ya existente sin autenticación previa. Por eso el token es la credencial completa —no un dato que acompaña a un email o a un identificador de cuenta—: pedir además el email haría que la protección real dependa de un dato que circula en cualquier lado, y no agrega nada que el token no dé.
+>
+> El canje no emite sesión a propósito. Emitirla ahorraría un paso, pero convertiría este endpoint en una vía de autenticación paralela al login, con su propio bloqueo de canal que mantener sincronizado. Un formulario de login extra es más barato que dos caminos hacia una sesión.
+>
+> **Pendiente**: qué pasa si el token se vence o se pierde antes de usarse. Hoy la salida es que el administrador de la plataforma emita otro por línea de comandos, lo cual funciona pero no está definido como proceso ni deja rastro de cuántas veces se reemitió.
 
 ## 5. Fuera de alcance de este documento
 

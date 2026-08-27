@@ -125,6 +125,18 @@ Si llega un token de refresco **ya canjeado**, es el indicio de que alguien tien
 
 La contrapartida asumida es que un cliente que pierda la respuesta de un refresco (por un corte de red en el momento exacto del canje) queda sin sesión y debe volver a autenticarse. Es preferible a no poder distinguir un token robado de uno legítimo.
 
+### 4.2.2 Token de activación
+
+Credencial de un solo uso con la que una cuenta de clínica_admin recién creada define su primera contraseña (Reglas de Negocio, 4.16). Como la tabla de sesión, **no es una entidad de dominio**: no la lee ni la escribe ninguna regla fuera de este proceso, no se audita y no aparece en el motor de permisos.
+
+- Valor opaco de 256 bits de aleatoriedad, generado por la línea de comandos que da de alta la clínica. Se muestra una sola vez y no se puede volver a consultar.
+- Se persiste **el hash SHA-256, nunca el token**, con el mismo criterio que el token de refresco: leer la tabla no puede alcanzar para activar una cuenta ajena. Y por el mismo motivo no es bcrypt — el valor es aleatorio, no una contraseña elegida por una persona, así que no hay diccionario que encarecer.
+- Guarda a qué `usuario_id` pertenece, cuándo vence y cuándo se usó. Vida por defecto: **7 días** (`ACTIVACION_TOKEN_TTL`), holgada para el traspaso manual entre el administrador de la plataforma y la clínica, y corta frente a un token que quede olvidado en un chat.
+- Un solo uso: el canje marca el token como usado en la misma transacción en que escribe el `password_hash`. Las dos escrituras van juntas o no va ninguna — un token consumido sin contraseña escrita deja la cuenta inaccesible para siempre.
+- Un token usado o vencido **no se borra**: queda como rastro de que la activación ocurrió y cuándo.
+
+> Todas las condiciones de rechazo (inexistente, vencido, ya usado, cuenta inactiva) devuelven el mismo error genérico. Distinguirlas le diría a quien esté probando valores al azar cuál de ellos existió alguna vez.
+
 ### 4.3 Ventana de revocación
 
 Con este esquema, desactivar a un Usuario (por ejemplo, un Veterinario que deja la clínica) no corta el acceso de forma instantánea: sigue siendo válido hasta que expira su token de acceso vigente. La ventana de exposición queda acotada a la vida del token de acceso (minutos, no días) — es un balance consciente entre seguridad y simplicidad, no un descuido.

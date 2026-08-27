@@ -11,7 +11,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 |---|---|---|
 | Web | Veterinario, Clínica_admin | Gestión completa del día a día clínico y administrativo. |
 | Móvil | Veterinario (paridad con web), Tutor (acceso exclusivo) | Para el veterinario: misma herramienta que la web, disponible fuera de la clínica. Para el tutor: único punto de entrada al sistema. |
-| Línea de comandos | Administrador de la plataforma | Alta de una Clínica junto con su cuenta clínica_admin (Reglas de Negocio, 4.10). No es una interfaz de usuario del producto: es una herramienta de operación, fuera de la API HTTP. |
+| Línea de comandos | Administrador de la plataforma | Alta de una Clínica junto con su cuenta clínica_admin, y emisión del token de activación con el que esa cuenta define su contraseña (Reglas de Negocio, 4.10). No es una interfaz de usuario del producto: es una herramienta de operación, fuera de la API HTTP. |
 
 > El tutor no tiene acceso a la web bajo ninguna circunstancia. El clínica_admin no tiene acceso a la aplicación móvil. Ambas restricciones deben validarse en el backend, no solo ocultarse en la interfaz — mismo criterio aplicado al motor de permisos en Reglas de Negocio.
 
@@ -30,6 +30,13 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 ### 3.1 Login
 - Autenticación por email + contraseña.
 - Rechaza el acceso si el usuario autenticado es de tipo tutor (regla de canal).
+
+### 3.1.1 Activación de la cuenta de clínica_admin (sin sesión)
+- Se abre con el token de activación que el administrador de la plataforma le entregó a la clínica (proceso 4.16 de Reglas de Negocio).
+- Pide únicamente la contraseña nueva, con la política de la regla 2.1 a la vista mientras se escribe.
+- Un token inexistente, vencido o ya usado se rechaza con un mismo mensaje genérico: la pantalla no ayuda a distinguir cuál de los tres fue.
+- Al activar **no se entra**: el canje no emite sesión. La pantalla lleva al login, donde se estrena la contraseña recién definida.
+- Es, junto con el registro de tutor en móvil (5.1), una de las dos pantallas del sistema alcanzables sin sesión.
 
 ### 3.2 Panel de clínica (rol: Clínica_admin)
 - Alta, edición y baja lógica de Veterinarios asociados a la clínica. La ficha y la cuenta de acceso se crean juntas, en una sola operación (proceso 4.12 de Reglas de Negocio), y la baja de la ficha desactiva la cuenta (4.13).
