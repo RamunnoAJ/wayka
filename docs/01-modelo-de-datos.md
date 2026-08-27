@@ -45,6 +45,8 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 | deleted_at | timestamp (nullable) | NULL = registro activo. Con fecha = borrado lógico. Nunca se elimina físicamente. |
 
 > El borrado lógico evita eliminar información clínica de forma irreversible. Las vistas activas del sistema filtran siempre por `deleted_at IS NULL`.
+>
+> `created_at` y `updated_at` se exponen en la API de todas las entidades. `deleted_at` **no**: un registro dado de baja simplemente no aparece en los listados, y devolver el campo en todas partes sugeriría que el cliente puede pedir los borrados, que no es el caso. La única excepción es **Paciente**, donde sí se expone — ver la nota de 4.2.
 
 ## 4. Entidades
 
@@ -85,6 +87,8 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 > `identificador_externo` es único entre fichas vigentes cuando está cargado: dos mascotas no pueden compartir número de chip.
 >
 > La baja del Paciente es lógica y no cascadea (Reglas de Negocio, 4.5). Ni `clínica_id` ni `tutor_id` son editables: la primera es fija en el MVP (regla 2.2) y cambiar la segunda sería transferir la mascota a otra persona sin dejar rastro de la transferencia.
+>
+> **`deleted_at` se expone en la API de Paciente**, a diferencia del resto de las entidades. Es la consecuencia directa de la regla 4.5: la ficha de una mascota dada de baja se sigue leyendo, con su historial, su medicación, sus citas y sus adjuntos completos — pero no admite escrituras nuevas. Sin el campo en la respuesta, el cliente no tiene forma de distinguir esa ficha de una vigente y le ofrecería al veterinario acciones que el backend va a rechazar. Es un dato de presentación, no un permiso: quién puede leerla lo sigue decidiendo el motor de permisos.
 
 ### 4.3 Clínica
 

@@ -254,7 +254,20 @@ Cuando se da de baja lógica un Paciente, sus Eventos clínicos, Medicación, Ci
 
 1. El cliente (web o móvil) obtiene un ID token de Google y lo envía al backend.
 2. El backend verifica ese token contra Google (firma, expiración, audiencia) — nunca confía en el email que el cliente afirma tener sin esa verificación.
+Que el historial siga consultable exige que **la ficha del Paciente también lo esté**: sin poder leer la mascota no hay desde dónde consultar lo que cuelga de ella. La lectura por id de un Paciente dado de baja devuelve la ficha, con `deleted_at` completo (Modelo de Datos, 4.2). Lo que se rechaza es la escritura:
+
+| Operación sobre un Paciente con `deleted_at` | Resultado |
+|---|---|
+| Leer la ficha por id | Devuelve la ficha, con `deleted_at` completo. |
+| Listarla entre los pacientes de la clínica o del tutor | No aparece: los listados filtran por `deleted_at IS NULL`. |
+| Leer su historial, medicación, citas y adjuntos | Se consultan normalmente. |
+| Editar la ficha, o darla de baja otra vez | Se rechaza. |
+| Cargar Eventos clínicos, Medicación, Citas o Adjuntos nuevos | Se rechaza (reglas 2.2). |
+| Editar o dar de baja los registros ya existentes | Se permite: corregir un diagnóstico mal cargado no depende de que la mascota siga en la cartera. |
+
 3. Se busca un Usuario existente por email:
+>
+> El detalle de la lectura por id se agregó después de la primera versión de esta sección. La regla ya decía que el historial quedaba consultable, pero no decía explícitamente que la ficha misma se leyera, y la API terminó devolviendo un 404 sobre el Paciente mientras sus entidades hijas seguían respondiendo. Era una contradicción del contrato consigo mismo, no una decisión.
    - **Si existe** (por ejemplo, fue creado antes con email + contraseña), se vincula google_id y avatar_url a ese Usuario existente. No se crea una cuenta duplicada.
    - **Si no existe**, la creación de una cuenta nueva vía Google solo está permitida dentro del flujo de auto-registro de tutor (4.9) — ahí Google es un método alternativo a la contraseña, no una vía de alta distinta. Para veterinario y clínica_admin, Google únicamente puede vincularse a una cuenta ya existente (caso anterior); si no hay ninguna, el login se rechaza — esas cuentas solo se crean por los procesos definidos en 2.5.
 4. El bloqueo de canal (regla 2.3) se valida igual que con cualquier otro método de autenticación — Google no es una vía para evadirlo.
