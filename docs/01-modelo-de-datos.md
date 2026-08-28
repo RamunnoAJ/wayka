@@ -221,10 +221,11 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 | evento_id | UUID / FK (nullable) | Completo cuando el adjunto documenta un evento clínico concreto; NULL cuando es un adjunto general del paciente (ej. ficha histórica escaneada). |
 | subido_por_usuario_id | UUID / FK | Cuenta que subió el archivo. Referencia a Usuario y no a Veterinario o Tutor, porque suben los dos roles. |
 | tipo | enum | Foto / PDF / estudio. |
-| clave_de_archivo | string | Ruta del objeto dentro del bucket. Es opaca para el cliente y no se expone en la API. |
+| clave_de_archivo | string | Ruta del objeto dentro del bucket. Es opaca para el cliente y no se expone en la API. Guarda **el archivo original, tal como se subió**. |
+| clave_de_vista_previa | string (nullable) | Ruta de un JPEG derivado, para los formatos que el navegador no sabe mostrar. NULL cuando el original ya se muestra —que es el caso de casi todos los adjuntos. Tampoco se expone en la API. |
 | nombre_archivo | string | Nombre original con el que se subió, para que la descarga no se llame como la clave. |
-| content_type | string | Tipo MIME verificado contra el `tipo` declarado. |
-| tamano_bytes | bigint | Tamaño del objeto, validado contra el máximo permitido antes de escribir. |
+| content_type | string | Tipo MIME de **lo que sirve la URL de descarga**, que es la vista previa cuando existe. |
+| tamano_bytes | bigint | Tamaño del **original**, validado contra el máximo permitido antes de escribir. |
 
 > `paciente_id` pasó a ser obligatorio y `evento_id` quedó como el único nullable de los dos. La primera versión los tenía a ambos nullable y mutuamente excluyentes; con esa forma, resolver el alcance de un adjunto colgado de un evento exigía ir a buscar el evento para llegar a la mascota, y nada impedía una fila con las dos FK vacías. Todo adjunto pertenece a una mascota; que además documente un evento es información adicional.
 
@@ -239,6 +240,16 @@ Los formatos admitidos dependen del `tipo` declarado: **foto** acepta cualquier 
 > El tipo MIME **se determina leyendo el contenido**, nunca la extensión ni lo que declare el cliente — el tipo declarado es un dato del cliente y el backend es la única barrera. Eso incluye a la familia **HEIF (HEIC/HEIF/AVIF)**, que es el formato con el que la cámara de un iPhone saca fotos por defecto: no la reconoce la detección estándar de la librería de Go, así que el backend la resuelve leyendo la marca de la caja `ftyp`. Sin eso, la foto de una herida sacada desde un iPhone quedaba rechazada por "no es una imagen".
 >
 > Se mira solo la marca **principal** y no las compatibles: el contenedor es el mismo que el de un mp4, y aceptar por marca compatible haría pasar un video por foto.
+
+**Vista previa de los formatos que el navegador no muestra.** Aceptar un HEIC no alcanza: fuera de Safari, ningún navegador lo dibuja, así que el veterinario que abría la foto desde la web se encontraba con una descarga. Al subir un HEIC o un HEIF, el backend **deriva un JPEG equivalente y guarda los dos objetos**: `clave_de_archivo` sigue apuntando al original intacto y `clave_de_vista_previa` al derivado. El `archivo_url` que devuelve la API —que sigue siendo uno solo— firma la vista previa cuando existe.
+
+> **El original no se pisa ni se descarta.** Convertir y tirar el archivo que subió el usuario sería destruir material clínico, y en este sistema ni siquiera la baja de un adjunto borra el objeto del bucket (Reglas de Negocio, 2.4). Guardar los dos cuesta almacenamiento y deja el original disponible para exponerlo más adelante sin haberlo perdido.
+>
+> **AVIF queda afuera a propósito**: es de la misma familia y tampoco lo reconoce la detección estándar, pero lo muestran Chrome, Firefox y Safari. Derivarle una copia sería duplicar el bucket sin que nadie la mire.
+>
+> **Si la conversión falla, el archivo se sube igual**, sin vista previa: quedarse sin la copia mostrable es no poder mirar el archivo en el navegador, y abortar la subida es quedarse sin el archivo. Lo segundo es peor.
+>
+> La conversión **no redimensiona ni recorta** — la vista previa se mira para decidir algo clínico, y achicarla tiraría justo el detalle por el que se abre la imagen. Lo único que cambia es el formato.
 
 ### 4.9 Usuario
 
