@@ -9,11 +9,13 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 
 | Plataforma | Quién accede | Propósito |
 |---|---|---|
-| Web | Veterinario, Clínica_admin | Gestión completa del día a día clínico y administrativo. |
-| Móvil | Veterinario (paridad con web), Tutor (acceso exclusivo) | Para el veterinario: misma herramienta que la web, disponible fuera de la clínica. Para el tutor: único punto de entrada al sistema. |
+| Web | Veterinario, Clínica_admin, Tutor | Gestión completa del día a día clínico y administrativo. Para el tutor: la misma consulta que hace desde el teléfono, cuando no lo tiene a mano. |
+| Móvil | Veterinario (paridad con web), Tutor (paridad con web) | Para el veterinario: misma herramienta que la web, disponible fuera de la clínica. Para el tutor: el punto de entrada habitual, y el único donde recibe avisos y puede sacar una foto. |
 | Línea de comandos | Administrador de la plataforma | Alta de una Clínica junto con su cuenta clínica_admin, y emisión del token de activación con el que esa cuenta define su contraseña (Reglas de Negocio, 4.10). No es una interfaz de usuario del producto: es una herramienta de operación, fuera de la API HTTP. |
 
-> El tutor no tiene acceso a la web bajo ninguna circunstancia. El clínica_admin no tiene acceso a la aplicación móvil. Ambas restricciones deben validarse en el backend, no solo ocultarse en la interfaz — mismo criterio aplicado al motor de permisos en Reglas de Negocio.
+> **El clínica_admin no tiene acceso a la aplicación móvil**, y esa restricción se valida en el backend, no solo ocultando la opción en la interfaz — mismo criterio aplicado al motor de permisos en Reglas de Negocio.
+>
+> El tutor **sí** entra por web. La primera versión de este documento decía que no accedía bajo ninguna circunstancia; se cambió porque dejaba afuera al tutor sin el teléfono a mano, y porque ningún dato ni ninguna acción del tutor dependen del canal. Lo que la app le da y la web no son las **dos funciones que dependen del aparato**: las notificaciones push (5.5) y sacar una foto con la cámara (5.6). Las dos degradan solas — sin push no hay recordatorio, y sin cámara se adjunta un archivo que ya esté en la computadora.
 
 ## 2. Matriz de plataforma por rol
 
@@ -21,9 +23,11 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 |---|---|---|
 | Clínica_admin | Acceso completo | Sin acceso |
 | Veterinario | Acceso completo | Acceso completo (paridad total con la web) |
-| Tutor | Sin acceso | Único punto de entrada |
+| Tutor | Acceso completo, menos push y cámara | Acceso completo |
 
-> La paridad del veterinario entre web y móvil implica que ambas plataformas comparten el mismo conjunto de funcionalidades para ese rol — la diferencia entre plataformas es de dispositivo/contexto de uso, no de permisos ni de features disponibles.
+> La paridad entre web y móvil implica que ambas plataformas comparten el mismo conjunto de funcionalidades para ese rol — la diferencia entre plataformas es de dispositivo/contexto de uso, no de permisos ni de features disponibles.
+>
+> Las dos excepciones del tutor no son de permisos: **push** (5.5) necesita un dispositivo registrado, que solo existe entrando desde la app, y **la cámara** (5.6) necesita una. En web, la subida de adjuntos sigue funcionando con un archivo del disco.
 
 ## 3. Pantallas mínimas — Web
 
@@ -75,7 +79,9 @@ Mismo conjunto funcional que las secciones 3.3 a 3.6, adaptado a formato móvil.
 
 > Nota de diseño: al tener paridad completa, conviene evaluar en la etapa técnica si conviene un codebase compartido (ej. framework multiplataforma) para el veterinario, en vez de mantener dos implementaciones separadas del mismo alcance funcional.
 
-## 5. Pantallas mínimas — Móvil (Tutor)
+## 5. Pantallas mínimas — Tutor
+
+Son las mismas en las dos plataformas. Están diseñadas para teléfono —una columna, barra inferior de pestañas— y en el navegador se muestran en esa misma composición, centradas: es una decisión de alcance, no un pendiente olvidado. Un kit propio de tutor-web se puede pedir más adelante sin rehacer nada de esto.
 
 ### 5.1 Login / Registro
 - Autenticación por email + contraseña, o con Google.
@@ -94,13 +100,14 @@ Mismo conjunto funcional que las secciones 3.3 a 3.6, adaptado a formato móvil.
 - Vista de citas pendientes con su fecha **y hora**, y con quién la va a atender si ya está asignada.
 - Confirmar o solicitar reagenda de una cita (sin poder cambiar el estado directamente, según proceso 4.4 de Reglas de Negocio). Al reagendar, el tutor elige entre las horas válidas de la clínica que atiende a su mascota, igual que el veterinario.
 
-### 5.5 Notificaciones
+### 5.5 Notificaciones — solo móvil
 - Recordatorio push el día anterior a una cita —a una hora fija— y otro un par de horas antes del turno, sobre las citas con `notificar_tutor` habilitado (Reglas de Negocio, 4.15).
-- La app registra el dispositivo al iniciar sesión y lo da de baja al cerrarla: una cuenta sin dispositivo registrado no recibe avisos.
+- La app registra el dispositivo al iniciar sesión y lo da de baja al cerrarla: una cuenta sin dispositivo registrado no recibe avisos. **El tutor que solo entra por web no recibe ninguno**, y la pantalla se lo dice ahí mismo en vez de dejarlo esperando un aviso que no va a llegar.
 - El aviso dice qué mascota, qué día y a qué hora; nunca contenido clínico. Una notificación se lee en la pantalla bloqueada del teléfono.
 
 ### 5.6 Adjuntos
 - Subida de archivos (ej. ficha histórica en papel, foto de una herida) asociados al paciente.
+- En móvil, además, **sacar la foto en el momento** con la cámara de la app, con guía de encuadre y revisión antes de subir. En web solo se adjunta un archivo que ya exista.
 
 ### 5.7 Datos básicos del paciente
 - Edición de campos no clínicos: peso actual.
