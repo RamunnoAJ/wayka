@@ -48,6 +48,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Edición de datos administrativos de la Clínica (nombre, dirección, contacto) y de su **horario de atención**: hora de apertura, hora de cierre y duración del turno. Los tres definen la grilla con la que el veterinario agenda (Modelo de Datos, 4.3), así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
 - El horario no se puede achicar mientras existan Citas pendientes que queden afuera del horario nuevo (regla 2.2): la pantalla tiene que decir cuáles son, no solo que la operación falló.
 - Cambio de la contraseña de la propia cuenta.
+- **Restablecer la contraseña de una cuenta del plantel**, desde la ficha de esa persona. No exige conocer la anterior. Es la única salida que tiene hoy un veterinario que olvidó la suya: no hay recuperación sin sesión (sección 6), y el correo con el que se avisaría tampoco existe. La contraseña nueva se la comunica el administrador por un medio propio, fuera del sistema.
 - Sin acceso a historial clínico ni medicación de pacientes (regla de alcance ya definida).
 
 ### 3.3 Gestión de pacientes (rol: Veterinario)
@@ -126,6 +127,6 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 
 ## 6. Fuera de alcance de este documento
 
-- **Recuperación de contraseña sin sesión ("olvidé mi contraseña").** Hoy no existe ni como pantalla ni como endpoint: quien olvida la suya depende de que otro se la restablezca. El contrato ya permite que un **clínica_admin restablezca la de una cuenta de su clínica** sin conocerla (`cambiarContrasena`), así que el veterinario y el propio admin tienen salida por esa vía — falta la pantalla que la use. El **tutor no la tiene**: ninguna clínica alcanza su cuenta. Cerrar el hueco pide backend nuevo (token de recuperación de un solo uso con vencimiento, y un proveedor de correo, que el sistema no tiene: hoy solo manda push).
+- **Recuperación de contraseña sin sesión ("olvidé mi contraseña").** Hoy no existe ni como pantalla ni como endpoint. El veterinario tiene salida por el restablecimiento que hace su clínica_admin (3.2), pero **el tutor no tiene ninguna**: ninguna clínica alcanza su cuenta, porque el alcance de un administrador se resuelve contra la clínica de pertenencia y un tutor no tiene. Un tutor que olvida su contraseña hoy pierde el acceso. Cerrar el hueco pide backend nuevo (token de recuperación de un solo uso con vencimiento, y un proveedor de correo, que el sistema no tiene: hoy solo manda push).
 - **Vista específica de paciente derivado en urgencia** — pendiente de definición, relacionada con Fase 2.
 - **Elección de stack técnico** — este documento define funcionalidad, no tecnología.
