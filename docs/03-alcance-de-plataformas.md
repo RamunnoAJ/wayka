@@ -47,6 +47,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - La clínica y su propia cuenta de administrador no se crean desde acá: las da de alta el administrador de la plataforma (proceso 4.10 de Reglas de Negocio).
 - Edición de datos administrativos de la Clínica (nombre, dirección, contacto) y de su **horario de atención**: hora de apertura, hora de cierre y duración del turno. Los tres definen la grilla con la que el veterinario agenda (Modelo de Datos, 4.3), así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
 - El horario no se puede achicar mientras existan Citas pendientes que queden afuera del horario nuevo (regla 2.2): la pantalla tiene que decir cuáles son, no solo que la operación falló.
+- Cambio de la contraseña de la propia cuenta.
 - Sin acceso a historial clínico ni medicación de pacientes (regla de alcance ya definida).
 
 ### 3.3 Gestión de pacientes (rol: Veterinario)
@@ -72,6 +73,11 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Vista de citas pendientes y vencidas de la clínica, por día, semana y mes, con quién atiende cada una.
 - **Asignación de profesional**, opcional: una cita puede quedar de la clínica y repartirse después. Al asignar, no se ofrecen los profesionales que ya tienen otra cita en ese momento — el backend lo rechaza igual, pero ofrecerlo y después fallar es un error que la interfaz puede evitar.
 - Filtrar la agenda por profesional, incluyendo "sin asignar": es la lista de lo que todavía hay que repartir.
+
+### 3.7 Mi cuenta (rol: Veterinario)
+- Lectura de los propios datos: nombre, matrícula y correo. **No son editables desde acá** — los carga el clínica_admin al dar de alta la cuenta (proceso 4.12), y la matrícula además decide si el veterinario puede escribir historial (regla 2.1): cambiársela a sí mismo sería cambiarse los permisos.
+- Cambio de la contraseña de la propia cuenta.
+- Existe porque el veterinario era el único rol sin ningún lugar donde vivieran sus datos: el tutor los tiene en "Mis datos" (5.8) y el clínica_admin en el panel (3.2). Va en el menú y no colgada de un avatar porque el rol tiene paridad entre web y móvil, y en el teléfono no hay avatar donde colgarla.
 
 ## 4. Pantallas mínimas — Móvil (Veterinario)
 
@@ -114,10 +120,12 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 
 ### 5.8 Mis datos (ficha propia del tutor)
 - Lectura y edición de la ficha propia: nombre, contacto, dirección y documento.
+- Cambio de la contraseña de la propia cuenta, en su propia sección.
 - El consentimiento de uso de datos no se edita desde acá: se otorga en el registro y no se revoca por la aplicación.
 - El tutor no ve ni busca fichas de otros tutores, y no puede dar de baja la suya.
 
 ## 6. Fuera de alcance de este documento
 
+- **Recuperación de contraseña sin sesión ("olvidé mi contraseña").** Hoy no existe ni como pantalla ni como endpoint: quien olvida la suya depende de que otro se la restablezca. El contrato ya permite que un **clínica_admin restablezca la de una cuenta de su clínica** sin conocerla (`cambiarContrasena`), así que el veterinario y el propio admin tienen salida por esa vía — falta la pantalla que la use. El **tutor no la tiene**: ninguna clínica alcanza su cuenta. Cerrar el hueco pide backend nuevo (token de recuperación de un solo uso con vencimiento, y un proveedor de correo, que el sistema no tiene: hoy solo manda push).
 - **Vista específica de paciente derivado en urgencia** — pendiente de definición, relacionada con Fase 2.
 - **Elección de stack técnico** — este documento define funcionalidad, no tecnología.
