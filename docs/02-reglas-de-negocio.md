@@ -258,6 +258,15 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 
 > El mecanismo elegido es un job programado (ver sección 4.6) — lo que se fija acá es la regla de negocio: una cita vencida nunca queda indefinidamente en estado "pendiente".
 
+### 4.4.1 Recuperación de contraseña
+
+1. Quien olvidó su contraseña pide el enlace con su correo. El sistema responde igual exista o no la cuenta: contestar distinto lo convertiría en una forma de recorrer el padrón probando direcciones.
+2. Si la cuenta existe, está activa y ya se estrenó, se emite un token de un solo uso con vencimiento corto y se manda por correo. **Pedir uno nuevo invalida los anteriores**: un correo viejo reenviado o filtrado no puede seguir abriendo la cuenta.
+3. El canje define la contraseña nueva y **cierra todas las sesiones abiertas** de esa cuenta. No emite sesión: para entrar hay que iniciar sesión, que es donde vive el bloqueo de canal (mismo criterio que la activación, 4.16).
+4. Una cuenta que todavía no se estrenó queda fuera: ya tiene su token de activación, y recuperarla sería saltear ese proceso.
+
+> **Cambiar la contraseña cierra las sesiones abiertas, venga de donde venga el cambio** — el propio usuario, el clínica_admin restableciendo la de su plantel, o la recuperación por correo. Recuperar o restablecer es, casi siempre, sospechar que alguien más la tiene: no cerrar lo abierto dejaría adentro justo a quien se quería echar. Alcanza a la sesión de quien la cambia, que va a tener que volver a entrar con la que acaba de elegir.
+
 ### 4.5 Borrado lógico en cascada de negocio
 
 Cuando se da de baja lógica un Paciente, sus Eventos clínicos, Medicación, Citas y Adjuntos NO se borran automáticamente en cascada. Quedan visibles y consultables desde el Paciente (aunque el Paciente ya no aparezca en listados activos), preservando la trazabilidad completa del historial. Solo un borrado lógico explícito sobre cada entidad hija la retira de las vistas activas de esa entidad en particular.

@@ -35,6 +35,14 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Autenticación por email + contraseña.
 - Rechaza el acceso si el usuario autenticado es de tipo tutor (regla de canal).
 
+### 3.1.2 Recuperar la contraseña (sin sesión)
+- Se alcanza desde el ingreso, y también desde el enlace que llega por correo.
+- **Pedir el enlace**: se escribe el correo y el sistema manda un token de un solo uso. La pantalla responde **lo mismo exista o no la cuenta** — decir "no encontramos ese correo" convertiría la pantalla en una forma de averiguar qué direcciones están registradas, que es justo lo que un padrón de tutores no debería revelar.
+- **Definir la nueva**: se abre con el token del enlace, pide la contraseña nueva con la política de la regla 2.1 a la vista, y **cierra todas las sesiones abiertas** de esa cuenta.
+- Al canjear **no se entra**: el canje no emite sesión, igual que la activación (3.1.1). La pantalla lleva al ingreso.
+- Un token inexistente, vencido o ya usado se rechaza con un mismo mensaje genérico.
+- Es, junto con el ingreso, el registro de tutor (5.1) y la activación (3.1.1), una de las pantallas alcanzables sin sesión.
+
 ### 3.1.1 Activación de la cuenta de clínica_admin (sin sesión)
 - Se abre con el token de activación que el administrador de la plataforma le entregó a la clínica (proceso 4.16 de Reglas de Negocio).
 - Pide únicamente la contraseña nueva, con la política de la regla 2.1 a la vista mientras se escribe.
