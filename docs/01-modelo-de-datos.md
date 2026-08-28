@@ -232,6 +232,14 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 
 > `archivo_url` se reemplazó por `clave_de_archivo`. El bucket es privado: no existe una URL estable que guardar. La API expone en cada lectura una URL prefirmada de vida corta, que se calcula en el momento y no se persiste — guardar una URL sería guardar un permiso vencido (Arquitectura, 3.4).
 
+**Límite y formatos.** El techo por archivo son **10 MiB** (10485760 bytes). El número está declarado en el contrato, en el `maxLength` de `SubirAdjuntoRequest.archivo`, y no solo en el código: la interfaz tiene que mostrar el límite **antes** de que el usuario elija el archivo, y para eso necesita leerlo de algún lado — descubrirlo con un 413 después de haber subido por red móvil es el viaje perdido que la interfaz puede evitar. El backend lo aplica igual.
+
+Los formatos admitidos dependen del `tipo` declarado: **foto** acepta cualquier imagen, **pdf** solo `application/pdf`, y **estudio** los dos, porque puede ser una placa o el informe que la acompaña.
+
+> El tipo MIME **se determina leyendo el contenido**, nunca la extensión ni lo que declare el cliente — el tipo declarado es un dato del cliente y el backend es la única barrera. Eso incluye a la familia **HEIF (HEIC/HEIF/AVIF)**, que es el formato con el que la cámara de un iPhone saca fotos por defecto: no la reconoce la detección estándar de la librería de Go, así que el backend la resuelve leyendo la marca de la caja `ftyp`. Sin eso, la foto de una herida sacada desde un iPhone quedaba rechazada por "no es una imagen".
+>
+> Se mira solo la marca **principal** y no las compatibles: el contenedor es el mismo que el de un mp4, y aceptar por marca compatible haría pasar un video por foto.
+
 ### 4.9 Usuario
 
 | Campo | Tipo | Descripción |
