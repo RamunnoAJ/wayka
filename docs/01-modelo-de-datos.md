@@ -84,7 +84,9 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 | clínica_id | UUID / FK | Clínica a la que pertenece (fija en el MVP). |
 | identificador_externo | string (nullable) | Número de chip/microchip. Clave para portabilidad en Fase 2. |
 
-> `peso_actual` se persiste como NUMERIC, no como punto flotante binario: el peso se compara y se muestra al gramo, y un `double` redondea de formas que en una historia clínica se notan. Debe ser mayor a cero.
+> `peso_actual` se persiste como NUMERIC, no como punto flotante binario: el peso se guarda y se compara al gramo, y un `double` redondea de formas que en una historia clínica se notan. Debe ser mayor a cero.
+>
+> **Guardar al gramo no es mostrar al gramo.** La interfaz redondea a un decimal y no arrastra el cero final —`2,6 kg`, `12 kg`—, porque en un perro de 31 kg el gramo es ruido. La excepción, y lo que termina de justificar el NUMERIC, es **por debajo del kilo**: ahí se muestra el gramo, porque en una calopsita de 95 gramos un decimal es `0,1 kg` y el redondeo se come el dato entero.
 >
 > `identificador_externo` es único entre fichas vigentes cuando está cargado: dos mascotas no pueden compartir número de chip.
 >
