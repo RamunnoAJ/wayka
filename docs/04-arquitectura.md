@@ -32,6 +32,7 @@ Justificación:
 | Backend — Capa de datos | Repositorios que implementan el Modelo de Datos — una entidad por repositorio. |
 | Base de datos relacional | Persiste todas las entidades del Modelo de Datos. |
 | Almacenamiento de archivos | Bucket privado compatible con S3. Persiste los Adjuntos (fotos, PDFs, estudios) por separado de la base relacional. El cliente nunca le habla directo para escribir: sube al backend y el backend al bucket (sección 3.2). |
+| Proveedor de mapas | Google Maps Platform, alcanzado **desde el cliente**, no desde el backend. Da el autocompletado de direcciones (Places Autocomplete) y el mapa donde se confirma el punto. El backend no le habla: recibe el resultado ya elegido y lo persiste (sección 3.6). |
 
 ### 3.1 Diagrama de componentes
 
@@ -99,6 +100,16 @@ El cliente web corre en otro origen que el backend, así que el navegador exige 
 - **El preflight lo contesta el middleware**, antes de la autenticación y sin llegar al router: viaja sin token y ninguna ruta del contrato declara `OPTIONS`, así que el router lo rechazaría con un 405 que el navegador reporta como un CORS mal configurado.
 - `Authorization` se declara explícitamente en `Access-Control-Allow-Headers`: el comodín `*` de la especificación no la cubre, y sin ella el token nunca sale del navegador.
 
+### 3.6 Autocompletado y confirmación de direcciones
+
+La dirección de un Tutor o de una Clínica se escribe con un autocompletado que consulta a Google Places, y se confirma sobre un mapa. Lo que se guarda son cuatro campos (Modelo de Datos, 3.1); lo que define esta sección es quién habla con Google.
+
+- **Habla el cliente, no el backend.** La web y la app consultan Places directamente y le mandan al backend la sugerencia ya elegida: texto normalizado, `place_id` y lat/lng. El backend los persiste tal cual, sin volver a consultar (Reglas de Negocio, 2.6). La alternativa —que el backend re-verifique cada escritura contra la Geocoding API— duplica el costo por dirección cargada y mete una dependencia de red externa en el camino de guardar una ficha: con el proveedor caído no se podría editar un tutor. Es una excepción acotada y explícita al principio de que el cliente no decide nada, y ahí está argumentada.
+- **La clave de API es del cliente y va restringida.** Una clave que vive en una app instalada y en un bundle de JavaScript es pública por definición; lo que la protege no es esconderla sino restringirla en la consola de Google: por dominio en la web, por *bundle id* en móvil, y limitada a las APIs de Places y Maps. Es **una clave distinta** de cualquier credencial del backend, y una por entorno.
+- **La confirmación es opcional y el formulario lo refleja.** El campo acepta texto escrito a mano. La sugerencia es una ayuda, no una barrera: si quien carga no elige ninguna, se guarda el texto sin coordenadas y el formulario no bloquea el guardado.
+- **Sin conexión no hay autocompletado.** Places es una llamada de red. En el móvil offline el campo degrada a texto libre y la dirección se sincroniza sin punto (Sincronización Offline, 4).
+- **Se puede desactivar por configuración.** `MAPAS_PROVEEDOR` en el cliente admite el proveedor real y uno nulo, que apaga el autocompletado y deja el campo como texto libre. Es el default en desarrollo: nadie tiene que dar de alta una clave facturable para levantar el proyecto, y un despliegue mal configurado degrada a texto libre en vez de romper el formulario.
+
 ## 4. Autenticación
 
 Wayka usa autenticación basada en tokens, con un token de acceso de vida corta y un token de refresco de vida más larga — el estándar para sistemas que sirven a web y móvil desde un mismo backend.
@@ -140,6 +151,8 @@ Credencial de un solo uso con la que una cuenta de clínica_admin recién creada
 ### 4.3 Ventana de revocación
 
 Con este esquema, desactivar a un Usuario (por ejemplo, un Veterinario que deja la clínica) no corta el acceso de forma instantánea: sigue siendo válido hasta que expira su token de acceso vigente. La ventana de exposición queda acotada a la vida del token de acceso (minutos, no días) — es un balance consciente entre seguridad y simplicidad, no un descuido.
+
+> Para el tutor en móvil esta ventana es más ancha, porque su dispositivo guarda una copia local de sus datos y la sigue leyendo hasta que un refresco sea rechazado. Escribir no puede: sus cambios se validan contra el estado actual al sincronizar. Ver Sincronización sin Conexión, sección 8.
 
 ### 4.4 Relación con el bloqueo de canal
 

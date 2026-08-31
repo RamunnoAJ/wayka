@@ -95,6 +95,26 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 
 > En consecuencia, el endpoint de alta de usuarios de la API solo acepta cuentas de tipo veterinario. Las de tutor entran por el registro público y las administrativas por fuera de la API. Esta misma restricción aplica al alta vía Google (4.7): solo el flujo de tutor puede originar una cuenta nueva.
 
+### 2.6 Dirección
+
+La dirección de Tutor y de Clínica son cuatro campos que viajan juntos: el texto, el `place_id` del proveedor de mapas y el par lat/lng (Modelo de Datos, 3.1). Confirmar el punto en el mapa es opcional; lo que no es opcional es que los cuatro campos sean coherentes entre sí.
+
+| Regla | Aplica a | Validación |
+|---|---|---|
+| Las coordenadas van completas o no van | Tutor, Clínica | `dirección_place_id`, `dirección_lat` y `dirección_lng` se cargan y se limpian **los tres juntos**. Una ficha con latitud y sin longitud, o con un punto sin el identificador que permita refrescarlo, es un dato a medias que ningún consumidor puede usar. |
+| No hay punto sin dirección | Tutor, Clínica | No se aceptan coordenadas con `dirección` vacía. Un pin que no se puede leer como domicilio no sirve ni para mostrar ni para verificar. |
+| La dirección arrastra su punto | Tutor, Clínica | Editar `dirección` sin enviar los otros tres campos **limpia** el `place_id` y las coordenadas. Conservarlos dejaría el pin apuntando a la casa anterior mientras el texto ya dice otra cosa, y esa ficha miente en las dos direcciones: el mapa contradice al texto y nada indica cuál de los dos es el dato bueno. Volver a confirmarla en el mapa es una acción explícita de quien edita. |
+| Coordenadas en rango | Tutor, Clínica | Latitud entre -90 y 90, longitud entre -180 y 180. Es la validación mínima contra un cliente que manda cualquier cosa. |
+| El backend no verifica contra el proveedor | Tutor, Clínica | El punto y el `place_id` los declara el cliente y se persisten tal como llegan: el backend **no** vuelve a consultar el servicio de mapas para confirmarlos. |
+
+> **Que el backend no re-verifique es una excepción deliberada al principio de que el cliente no decide nada** (Arquitectura, sección 3). Un cliente manipulado puede guardar una dirección con un punto que no le corresponde. Se acepta porque lo que está en juego es un dato declarado por el propio titular sobre sí mismo —el tutor sobre su domicilio, la clínica sobre el suyo—, no un permiso ni un dato clínico: falsearlo no da acceso a nada. Re-verificar cada escritura pondría una dependencia de red externa en el camino de guardar una ficha, y una caída del proveedor pasaría a impedir editar un tutor.
+>
+> El día que las coordenadas dejen de ser un dato de contacto y pasen a decidir algo —el matching geolocalizado de urgencias de Fase 2 elige a quién derivar— esta excepción hay que revisarla, porque ahí sí el punto empieza a tener consecuencias sobre terceros.
+>
+> **Quién puede escribir la dirección no cambia con esto**: es exactamente quien ya podía escribir la ficha (sección 3.2). En Tutor, el propio tutor sobre la suya y el veterinario vinculado; en Clínica, el clínica_admin sobre la propia. El campo es parte de la ficha, no un permiso aparte.
+>
+> La dirección es **dato personal alcanzado por la Ley 25.326**, igual que el documento: queda cubierta por el `consentimiento_datos` que el tutor ya otorga al registrarse (4.9) y por la auditoría de la ficha. No se agrega un consentimiento nuevo por guardar el punto en el mapa — es el mismo domicilio que ya se pedía, con más precisión.
+
 ## 3. Motor de permisos
 
 La matriz de permisos definida en el Modelo de Datos (sección 5) es la referencia; esta sección describe el servicio que la aplica en tiempo de ejecución, sobre cada lectura y escritura.

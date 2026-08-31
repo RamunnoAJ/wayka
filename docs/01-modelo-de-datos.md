@@ -50,6 +50,27 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 >
 > `created_at` y `updated_at` se exponen en la API de todas las entidades. `deleted_at` **no**: un registro dado de baja simplemente no aparece en los listados, y devolver el campo en todas partes sugeriría que el cliente puede pedir los borrados, que no es el caso. La única excepción es **Paciente**, donde sí se expone — ver la nota de 4.2.
 
+### 3.1 Dirección
+
+Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No es un dato de texto suelto: es una dirección legible con su punto en el mapa al lado.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| dirección | string | La dirección tal como se muestra. Si salió de una sugerencia del mapa, es el texto normalizado que devolvió el proveedor; si la escribió una persona a mano, es lo que escribió. |
+| dirección_place_id | string (nullable) | Identificador que el proveedor de mapas le asigna al lugar. Permite volver a consultarlo más adelante sin depender de que el texto siga escribiéndose igual. |
+| dirección_lat | decimal (nullable) | Latitud del punto confirmado. |
+| dirección_lng | decimal (nullable) | Longitud del punto confirmado. |
+
+> **Confirmar en el mapa no es obligatorio.** El cliente ofrece autocompletado (Arquitectura, 3.6) y, cuando quien carga elige una de las sugerencias, los cuatro campos se guardan juntos. Cuando escribe una dirección que el proveedor no conoce —un barrio nuevo, un paraje rural, una casa sin altura— se guarda igual: `dirección` cargada y los otros tres en NULL. Exigir la confirmación convertiría una zona mal mapeada en una ficha imposible de completar, y en el móvil sin conexión dejaría la dirección sin poder editarse.
+>
+> La contrapartida asumida es que conviven dos calidades de dirección en el mismo padrón. Es explícito y consultable: la que tiene coordenadas es la que el matching geolocalizado de Fase 2 va a poder usar tal cual; la que no las tiene habrá que geocodificarla o volver a preguntarla en ese momento.
+>
+> **Los cuatro campos se escriben como un bloque.** Cambiar el texto sin cambiar el punto dejaría el pin apuntando a la casa anterior, que es peor que no tener pin (Reglas de Negocio, 2.6).
+>
+> Se guardan **lat/lng además del place_id**, y no solo el identificador. Resolver un place_id a un punto es una llamada a un servicio externo, y las consultas geográficas de Fase 2 no pueden depender de que ese servicio esté arriba ni de re-geocodificar el padrón entero cada vez. El place_id sirve para refrescar el dato cuando una calle se renombra; el punto, para consultarlo.
+>
+> **Veterinario no tiene dirección**, y no es un olvido: la dirección del veterinario es la de la clínica donde atiende, que ya vive en `Clínica`. Un domicilio particular del profesional no lo necesita ningún proceso del MVP, y guardarlo sería pedir un dato personal que nadie va a leer.
+
 ## 4. Entidades
 
 ### 4.1 Tutor
@@ -61,7 +82,7 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 | tipo_documento | enum (nullable) | DNI / Pasaporte u otro documento de identidad extranjero. NULL hasta que se complete la ficha. |
 | número_documento | string (nullable) | Único junto con tipo_documento. DNI para residentes argentinos; pasaporte u otro documento equivalente para no residentes. NULL hasta que se complete la ficha. |
 | contacto | string | Teléfono y/o email. |
-| dirección | string (nullable) | Útil para Fase 2 (geolocalización). |
+| dirección + dirección_place_id + dirección_lat + dirección_lng | ver 3.1 | Domicilio del tutor, opcionalmente confirmado en el mapa. `dirección` es nullable acá: NULL hasta que se complete la ficha. Base del matching geolocalizado de Fase 2. |
 | clínica_de_origen_id | UUID / FK (nullable) | Clínica que dio de alta la ficha. NULL si el tutor se auto-registró. Sostiene el alcance de esa clínica sobre la ficha entre el momento en que la crea y el momento en que le da de alta un Paciente (Reglas de Negocio, 3.2). |
 | consentimiento_datos | boolean + fecha | Consentimiento explícito de uso de datos (Ley 25.326). | No se revoca por la API: la edición de la ficha no expone el campo, porque la ley exige rastro del otorgamiento y no una baja silenciosa.
 
@@ -100,7 +121,7 @@ Los siguientes tres campos están presentes en todas las entidades principales (
 |---|---|---|
 | id | UUID / PK | Identificador único. |
 | nombre | string | — |
-| dirección | string | — |
+| dirección + dirección_place_id + dirección_lat + dirección_lng | ver 3.1 | Domicilio de la clínica, opcionalmente confirmado en el mapa. `dirección` es obligatoria: una clínica sin dirección no se puede visitar. |
 | contacto | string | — |
 | hora_apertura | time | Hora a la que la clínica empieza a atender. |
 | hora_cierre | time | Hora a la que deja de atender. Posterior a `hora_apertura`. |
@@ -369,3 +390,4 @@ Los siguientes campos no se utilizan activamente en el MVP pero se incluyen desd
 - **Veterinario.matrícula** — base para validación profesional automática (tipo KYC).
 - **Paciente.clínica_id** — modelado como FK simple en el MVP; migrará a tabla intermedia N:N cuando un paciente pueda ser atendido por más de una clínica.
 - **Evento clínico.campo_estructurado** — permite sumar campos de triaje estructurado sin romper el esquema existente.
+- **Tutor.dirección_lat / dirección_lng y Clínica.dirección_lat / dirección_lng** — el punto en el mapa sobre el que va a correr la búsqueda por cercanía. Se capturan desde el MVP porque geocodificar hacia atrás un padrón de direcciones escritas a mano años después es reconstruir el dato, no migrarlo.

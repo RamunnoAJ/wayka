@@ -53,7 +53,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 ### 3.2 Panel de clínica (rol: Clínica_admin)
 - Alta, edición y baja lógica de Veterinarios asociados a la clínica. La ficha y la cuenta de acceso se crean juntas, en una sola operación (proceso 4.12 de Reglas de Negocio), y la baja de la ficha desactiva la cuenta (4.13).
 - La clínica y su propia cuenta de administrador no se crean desde acá: las da de alta el administrador de la plataforma (proceso 4.10 de Reglas de Negocio).
-- Edición de datos administrativos de la Clínica (nombre, dirección, contacto) y de su **horario de atención**: hora de apertura, hora de cierre y duración del turno. Los tres definen la grilla con la que el veterinario agenda (Modelo de Datos, 4.3), así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
+- Edición de datos administrativos de la Clínica (nombre, dirección con confirmación en el mapa, contacto) y de su **horario de atención**: hora de apertura, hora de cierre y duración del turno. Los tres definen la grilla con la que el veterinario agenda (Modelo de Datos, 4.3), así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
 - El horario no se puede achicar mientras existan Citas pendientes que queden afuera del horario nuevo (regla 2.2): la pantalla tiene que decir cuáles son, no solo que la operación falló.
 - Cambio de la contraseña de la propia cuenta.
 - **Restablecer la contraseña de una cuenta del plantel**, desde la ficha de esa persona. No exige conocer la anterior. Es la única salida que tiene hoy un veterinario que olvidó la suya: no hay recuperación sin sesión (sección 6), y el correo con el que se avisaría tampoco existe. La contraseña nueva se la comunica el administrador por un medio propio, fuera del sistema.
@@ -62,7 +62,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 ### 3.3 Gestión de pacientes (rol: Veterinario)
 - Lectura del plantel de la propia clínica (sin poder modificarlo), para resolver quién firmó cada registro clínico.
 - Alta de paciente (con alta de tutor si no existe, según proceso 4.1 de Reglas de Negocio).
-- Búsqueda de tutores por documento, nombre o contacto; alta y edición de la ficha de un tutor, incluido completar documento y dirección. El listado se pagina siempre: no está acotado a la propia clínica.
+- Búsqueda de tutores por documento, nombre o contacto; alta y edición de la ficha de un tutor, incluido completar documento y dirección — la dirección con el mismo autocompletado y mapa que usa el tutor en su ficha propia (5.8). El listado se pagina siempre: no está acotado a la propia clínica.
 - Baja lógica de una ficha de tutor.
 - Búsqueda y listado de pacientes de la propia clínica.
 - Ficha de paciente: datos básicos, historial de eventos clínicos, medicación activa e histórica.
@@ -118,17 +118,28 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 ### 5.5 Notificaciones — solo móvil
 - Recordatorio push el día anterior a una cita —a una hora fija— y otro un par de horas antes del turno, sobre las citas con `notificar_tutor` habilitado (Reglas de Negocio, 4.15).
 - La app registra el dispositivo al iniciar sesión y lo da de baja al cerrarla: una cuenta sin dispositivo registrado no recibe avisos. **El tutor que solo entra por web no recibe ninguno**, y la pantalla se lo dice ahí mismo en vez de dejarlo esperando un aviso que no va a llegar.
+- **El tutor prende y apaga los avisos desde la app**, en la pantalla de Avisos. Apagarlos da de baja este dispositivo; prenderlos lo da de alta de nuevo.
+  - Es **por teléfono, no por cuenta**: el modelo registra Dispositivos y no una preferencia del Usuario (Modelo de Datos, sección 5). Apagarlos en un aparato no los apaga en el otro del mismo tutor — el que molesta es el que se tiene en la mano.
+  - La decisión **sobrevive al cierre de sesión**. El registro automático del login la respeta; si no, el próximo ingreso volvería a prenderlos y el control no serviría de nada. Cerrar sesión sigue dando de baja el aparato por seguridad, pero eso no es apagarlos: al volver a entrar quedan como el tutor los dejó.
+  - **No reemplaza al permiso del sistema operativo**, que es otra cosa y solo se revierte desde los ajustes del teléfono. Mientras el permiso no esté concedido no se ofrece el interruptor: sería un control que el sistema ya bloqueó. Conceder el permiso los deja prendidos, porque conceder ya fue decir que sí.
 - El aviso dice qué mascota, qué día y a qué hora; nunca contenido clínico. Una notificación se lee en la pantalla bloqueada del teléfono.
 
 ### 5.6 Adjuntos
 - Subida de archivos (ej. ficha histórica en papel, foto de una herida) asociados al paciente.
 - En móvil, además, **sacar la foto en el momento** con la cámara de la app, con guía de encuadre y revisión antes de subir. En web solo se adjunta un archivo que ya exista.
+- **Mirar el adjunto sin salir de la ficha**, tocando la tarjeta (o el chip, en el historial). Un listado que solo muestra nombre y peso obliga a retirar y volver a subir para saber si la foto que se cargó era la correcta.
+  - La tarjeta de un adjunto que es imagen **muestra la imagen**, no un icono genérico: reconocer cuál es cuál sin abrir ninguno es la mitad del problema.
+  - Las **imágenes se ven dentro de la aplicación**, con acercamiento por pinch y doble toque, y arrastre para recorrerlas cuando están acercadas — una herida o el renglón de una ficha en papel se miran de cerca. El resto (un PDF, un formato que el aparato no dibuja) se abre con el visor del sistema: la aplicación no incorpora un motor de renderizado propio, y la URL prefirmada ya es lo que ese visor necesita.
+  - El archivo **no se descarga al dispositivo**. Se mira contra la URL prefirmada del momento (Reglas de Negocio, 4.14.4), que vence en minutos: cada apertura pide una nueva en vez de reusar la del listado. Una copia local sería historial clínico fuera del alcance del motor de permisos.
+  - El gesto es el mismo en las dos plataformas: el toque abre, y mantener apretado también — un adjunto no tiene una segunda acción que reclame el toque largo, así que los dos hacen lo mismo en vez de dejar uno sin respuesta. No hay acción de descarga ni de compartir: sacar el archivo del sistema es una decisión de producto que este documento no toma.
+  - Con **movimiento reducido** activado, el visor abre sin animación y la imagen queda fija: el acercamiento continuo bajo el dedo es justo lo que ese ajuste pide evitar.
 
 ### 5.7 Datos básicos del paciente
 - Edición de campos no clínicos: peso actual.
 
 ### 5.8 Mis datos (ficha propia del tutor)
 - Lectura y edición de la ficha propia: nombre, contacto, dirección y documento.
+- La dirección se escribe con autocompletado y se confirma sobre un mapa, que es lo que permite ver que el punto es el correcto antes de guardarlo. **Confirmarla no es obligatorio**: se puede guardar una dirección escrita a mano que el mapa no reconoce, y sin conexión el campo es texto libre (Arquitectura, 3.6). La pantalla lo tiene que dejar claro — un campo que parece exigir la sugerencia deja trabada a la persona que vive en una calle mal mapeada.
 - Cambio de la contraseña de la propia cuenta, en su propia sección.
 - El consentimiento de uso de datos no se edita desde acá: se otorga en el registro y no se revoca por la aplicación.
 - El tutor no ve ni busca fichas de otros tutores, y no puede dar de baja la suya.
