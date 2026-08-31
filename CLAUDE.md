@@ -9,8 +9,8 @@ No es un monorepo con un solo repo git: cada subproyecto tiene su propio histori
 | Carpeta | Qué es | Git |
 |---|---|---|
 | `backend/` | API en Go (chi, sqlc, goose, oapi-codegen, Postgres) | repo propio → `RamunnoAJ/wayka-backend` |
-| `frontend/` | Cliente único web + móvil (Expo, React Native Web, Expo Router) | repo propio, todavía sin remote |
-| `docs/` | Contrato de producto compartido por los dos | este repo |
+| `frontend/` | Cliente único web + móvil (Expo, React Native Web, Expo Router) | repo propio → `RamunnoAJ/wayka-frontend` |
+| `docs/` | Contrato de producto compartido por los dos | este repo → `RamunnoAJ/wayka` |
 
 **Cada subproyecto tiene su propio `CLAUDE.md`** con su stack, su arquitectura y sus principios no negociables — es la fuente de verdad de cómo se trabaja ahí:
 
