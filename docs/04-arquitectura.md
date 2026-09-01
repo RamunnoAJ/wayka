@@ -29,6 +29,7 @@ Justificación:
 | Proveedor de notificaciones push | Expo Push, alcanzado por HTTP desde el backend. El envío es responsabilidad del servidor: la app Expo solo obtiene el token del aparato y lo registra contra la API. Hay dos adaptadores detrás de la misma interfaz de negocio y se eligen por configuración (`PUSH_PROVEEDOR`): el de Expo y uno que registra el envío en el log, que es el default para que un despliegue mal configurado deje rastro en vez de avisar a los teléfonos equivocados. |
 | Backend — Job programado | Proceso interno que transiciona Citas vencidas, invocando la capa de negocio directamente (Reglas de Negocio, 4.6). Corre dentro del mismo proceso que la API, en una goroutine que vive lo que vive el proceso. En el MVP hay una sola instancia del backend; si se despliega más de una, dos jobs pueden solaparse — la transición es idempotente (vencer una cita ya vencida no la cambia), pero repartir el trabajo o tomar un lock queda por decidir en ese momento. |
 | Backend — Herramienta de administración | Comando de línea de comandos que da de alta una Clínica y su cuenta clínica_admin (Reglas de Negocio, 4.10). Como el job, entra a la capa de negocio directamente, sin pasar por la API: no hay sesión de usuario que autenticar y la operación no debe quedar expuesta por HTTP. |
+| Backend — Job de retención de telemetría | Proceso interno que aplica el plazo de 13 meses sobre los Eventos de telemetría: borra el detalle y conserva los agregados (Telemetría de Producto, 8). Corre como el de citas vencidas, dentro del mismo proceso y contra la capa de negocio. Es el único borrado físico del sistema, y por eso es un job acotado y no una operación de la API. |
 | Backend — Capa de datos | Repositorios que implementan el Modelo de Datos — una entidad por repositorio. |
 | Base de datos relacional | Persiste todas las entidades del Modelo de Datos. |
 | Almacenamiento de archivos | Bucket privado compatible con S3. Persiste los Adjuntos (fotos, PDFs, estudios) por separado de la base relacional. El cliente nunca le habla directo para escribir: sube al backend y el backend al bucket (sección 3.2). |
@@ -46,7 +47,8 @@ Móvil (vet + tutor) ┘         │
                                ├─ Capa de negocio
                                │     (permisos, servicios, auditoría)
                                │     ├─ Job programado
-                               │     │     (citas vencidas, recordatorios)
+                               │     │     (citas vencidas, recordatorios,
+                               │     │      retención de telemetría)
                                │     └─ Herramienta de administración
                                │           (alta de clínica + clínica_admin)
                                │

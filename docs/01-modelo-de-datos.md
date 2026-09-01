@@ -26,8 +26,13 @@ Invitación de co-tutor ──canje──> Acceso de co-tutor
 
 Paciente
                 │
+                ├──N Consulta atendida  (el hecho asistencial)
+                │         ├── cita_id (nullable: la agendada que vino a cumplir)
+                │         └── veterinario_id (quién atendió)
+                │
                 ├──N Evento clínico ──N Adjuntos
-                │         └── veterinario_id (trazabilidad)
+                │         ├── veterinario_id (trazabilidad)
+                │         └── consulta_id (nullable: en qué atención se escribió)
                 │
                 ├──N Medicación (activa si fecha_fin IS NULL)
                 └──N Cita (calendario) ──N Notificación
@@ -40,15 +45,17 @@ Usuario N───1 Veterinario  (si tipo_usuario = veterinario)
 Usuario N───1 Clínica  (si tipo_usuario = clínica_admin)
 Usuario N───1 Clínica  (clínica_de_pertenencia_id: veterinario y clínica_admin)
 
-Auditoría ──registra cambios de──> Evento clínico, Medicación, Cita, Paciente, Adjuntos,
-                                   Vínculo con clínica, Acceso de co-tutor
+Auditoría ──registra cambios de──> Evento clínico, Medicación, Cita, Consulta atendida,
+                                   Paciente, Adjuntos, Vínculo con clínica, Acceso de co-tutor
 
 Cita N───1 Veterinario  (veterinario_id: a quién le toca atender, opcional)
+
+Evento de telemetría N───1 Usuario  (nullable: los que emite el sistema no tienen actor)
 ```
 
 ## 3. Campos transversales
 
-Los siguientes tres campos están presentes en todas las entidades principales (Tutor, Paciente, Clínica, Veterinario, Usuario, Evento clínico, Medicación, Cita, Adjuntos):
+Los siguientes tres campos están presentes en todas las entidades principales (Tutor, Paciente, Clínica, Veterinario, Usuario, Evento clínico, Medicación, Cita, Consulta atendida, Adjuntos):
 
 | Campo | Tipo | Descripción |
 |---|---|---|
@@ -184,9 +191,17 @@ Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No e
 | descripción | text | Texto libre del veterinario. |
 | diagnóstico | text (nullable) | — |
 | campo_estructurado | JSON (nullable) | Datos estructurados para tipos críticos (ver nota). |
-| cita_id | UUID / FK (nullable) | Cita que esta atención vino a cumplir. NULL cuando la atención no estaba agendada. |
+| consulta_id | UUID / FK (nullable) | Consulta atendida (4.16) en la que se escribió. NULL cuando no hay asiento — una carga histórica, o una atención que nadie asentó. |
 
-> `cita_id` es el vínculo entre Evento clínico y Cita que la regla 4.4 de Reglas de Negocio dejaba pendiente del diseño técnico. La FK vive del lado del Evento clínico, no de la Cita, por dos motivos: la mayoría de las atenciones no nacen de una cita (la FK es nullable en el lado que efectivamente puede estar vacío), y una misma Cita no se cumple dos veces, así que no hace falta la colección que la dirección inversa habilitaría. Cargar un evento con `cita_id` es lo que transiciona esa Cita a `cumplido` (Reglas de Negocio, 4.4).
+> **`cita_id` ya no existe en esta entidad**: la reemplazó `consulta_id`. La FK a Cita vivía acá desde antes de que existiera la Consulta atendida, y sostenía la regla "una cita se cumple con un solo evento" con un índice único. Esa regla dejó de ser cierta: de una misma atención cuelgan varios eventos —se pone una vacuna y se registra una alergia—, y con las dos FK al lado había que elegir arbitrariamente cuál de los eventos se quedaba con la cita. La cadena es una sola y no se duplica: **Cita** (lo que se planeó) → **Consulta atendida** (lo que ocurrió) → **Evento clínico** (lo que se escribió). Qué cita cumplió un evento se sigue leyendo entero, por su consulta.
+>
+> La API sí recibe `cita_id` al cargar un evento, y no es una contradicción: es un atajo de entrada. Declarar qué cita cumple esta carga asienta la Consulta atendida de esa cita si todavía no estaba, y el evento queda vinculado a ella (Reglas de Negocio, 4.21). Lo que se persiste es la consulta.
+
+> Una atención espontánea tiene consulta y no tiene cita; una carga histórica no tiene ninguna de las dos, y por eso `consulta_id` es nullable.
+>
+> Varios eventos pueden colgar de la misma consulta: en una atención se pone una vacuna y se registra una alergia, y son dos eventos de un solo hecho asistencial. Por eso la FK vive del lado del Evento clínico, que es el lado que puede estar vacío.
+>
+> Los eventos con `consulta_id` NULL no son un error a corregir: son la medida de cuánto se está escribiendo sin asentar, que es la lectura inversa de la cobertura.
 
 > Se recomienda estructurar como campos fijos (no texto libre) al menos: vacunas, medicación activa y alergias — son los datos que un veterinario ajeno necesita leer en segundos durante una urgencia.
 
@@ -237,7 +252,9 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 | estado | enum | Pendiente / cumplido / vencido. |
 | notificar_tutor | boolean | Dispara notificación al tutor. |
 
-> `estado` no es un campo que el cliente escriba: nace en `pendiente`, pasa a `cumplido` cuando se carga el Evento clínico que la referencia por `cita_id` (4.5) y a `vencido` por el job programado (Reglas de Negocio, 4.6). No hay endpoint que lo reciba — exponerlo dejaría marcar como cumplida una cita que nadie atendió.
+> `estado` no es un campo que el cliente escriba: nace en `pendiente`, pasa a `cumplido` cuando se asienta la **Consulta atendida** que la referencia (4.16) y a `vencido` por el job programado (Reglas de Negocio, 4.6). No hay endpoint que lo reciba — exponerlo dejaría marcar como cumplida una cita que nadie atendió.
+>
+> El disparador era antes la carga de un Evento clínico que la referenciaba por una FK propia, y cambió al aparecer la Consulta atendida — que además se quedó con esa FK (4.5). El motivo es que cumplir una cita es **haber atendido**, no haber escrito: con el disparador viejo, la cita de un paciente atendido el martes y documentado el jueves figuraba vencida dos días. El comportamiento no se pierde, porque cargar ese evento declarando su cita asienta la consulta (Reglas de Negocio, 4.21) y la transición ocurre igual.
 
 > `fecha_programada` era una fecha sin hora en la primera versión de esta tabla. Pasó a timestamp porque una agenda de veterinaria sin hora no es una agenda: dos cirugías el mismo martes no son intercambiables, y el calendario no podía mostrar más que "hay algo ese día". El costo asumido es que ahora hay una zona horaria en juego — se persiste en UTC y se presenta en la `zona_horaria` de la clínica que atiende a la mascota (4.3).
 >
@@ -340,6 +357,8 @@ Los formatos admitidos dependen del `tipo` declarado: **foto** acepta cualquier 
 
 > Se completa automáticamente vía lógica de aplicación o triggers en cada creación, edición o borrado lógico de las entidades clínicas. No depende de que el usuario registre nada manualmente.
 >
+> Consulta atendida se audita con el mismo criterio que el Evento clínico: es una afirmación asistencial sobre un paciente, y darla de baja o corregirle la fecha tiene que dejar rastro.
+
 > Adjuntos entró a la Auditoría después de la primera versión de esta sección: una radiografía o la foto de una herida son dato clínico, y que aparezcan o desaparezcan del historial tiene que dejar rastro igual que el evento del que cuelgan. El rastro guarda los metadatos del archivo, nunca su contenido.
 
 > `usuario_tipo = sistema` cubre acciones ejecutadas por procesos automáticos del backend (ej. el job programado que transiciona Citas vencidas), no por una persona autenticada. Ver Reglas de Negocio, sección 4.6.
@@ -450,6 +469,61 @@ Cómo se le da acceso a alguien que puede todavía no tener cuenta.
 >
 > Vence a los **7 días**, mucho más que la activación y la recuperación, que se miden en horas. La diferencia es deliberada: esos dos son credenciales de una cuenta que ya existe y que su titular está mirando en ese preciso momento; este viaja entre dos personas, y quien lo recibe puede tener que crearse una cuenta antes de poder canjearlo.
 
+### 4.16 Consulta atendida
+
+Que la clínica atendió a esta mascota este día. Es el hecho asistencial, separado de lo que se haya escrito después sobre él.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| id | UUID / PK | Identificador único. |
+| paciente_id | UUID / FK | A quién se atendió. |
+| clínica_id | UUID / FK | Dónde. Fija desde el alta, como en Cita (4.7). |
+| veterinario_id | UUID / FK | Quién atendió. Obligatorio: una atención sin profesional no es un hecho asistencial. |
+| cita_id | UUID / FK (nullable) | La cita que esta atención vino a cumplir. NULL cuando nadie la agendó. Única: una cita no se atiende dos veces. |
+| origen | enum | Agendada / espontánea / urgencia. |
+| fecha_hora | timestamp | Cuándo se atendió. Se persiste en UTC y se lee en la `zona_horaria` de la clínica, igual que la Cita. |
+| registrada_por_usuario_id | UUID / FK | Quién la asentó. Puede no ser quien atendió: un veterinario asienta la del colega que ya se fue. |
+| asentada_automáticamente | boolean | True cuando la creó el sistema al cargarse un Evento clínico que declara la cita que cumple, y no un profesional al atender. Es lo que permite separar lo asentado de lo deducido al leer las métricas. |
+
+> **Por qué es una entidad y no un estado de la Cita.** La mayoría de las atenciones de una veterinaria no estaban agendadas: entra alguien con el perro que se cortó. Colgar el hecho de la Cita dejaría afuera justo al caso más frecuente, y obligaría a inventar una cita retroactiva para poder registrar que se atendió — una agenda que se completa hacia atrás deja de servir como agenda.
+
+> **Por qué no alcanza con el Evento clínico.** El Evento clínico es lo que el veterinario *escribió*; esto es lo que *pasó*. Son la misma cosa solo si se escribe siempre, que es precisamente lo que hay que medir: la cobertura del piloto es cuántas de las atenciones asentadas terminaron con historial cargado (Telemetría de Producto, 9). Derivar el denominador del numerador no mide nada.
+
+> **`asentada_automáticamente` existe para no mentir la métrica.** Cargar un Evento clínico declarando la cita que cumple asienta la consulta si no estaba (Reglas de Negocio, 4.21), porque una atención documentada es una atención que ocurrió y perder ese hecho sería absurdo. Pero esas filas no informan nada nuevo: entraron por el mismo camino que el numerador. La cobertura se lee sobre las asentadas por una persona, y el resto se cuenta aparte.
+
+> **La asienta el veterinario, no la recepción.** Sería más barato que la asiente quien recibe al paciente, pero eso exigiría darle al clínica_admin la información de qué mascota fue atendida y cuándo, que es exactamente lo que la matriz de la sección 5 le niega. El asiento vale un toque desde la agenda o desde la ficha, y esa es toda la fricción que puede tener para que se use.
+
+> **Es dato asistencial: se audita y su baja es lógica**, como el Evento clínico. Un asiento cargado por error se da de baja, no se borra: "esta mascota fue atendida el martes" es afirmación que dejó de ser cierta, y por qué dejó de serlo tiene que quedar en el rastro.
+
+> **No la escribe el tutor ni la lee como tal.** El tutor ve el historial, que es lo que le sirve; una lista de "fuiste atendido" sin nada escrito al lado solo comunicaría que la clínica no cargó, y eso es un problema entre nosotros y la clínica, no un dato para el dueño de la mascota.
+
+### 4.17 Evento de telemetría
+
+Qué hace la gente con el producto. Es el registro que sostiene las métricas del piloto (Telemetría de Producto).
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| id | UUID / PK | Identificador único. |
+| nombre | enum | Qué pasó. El catálogo cerrado está en Telemetría de Producto, sección 5. Un nombre fuera del enum se descarta. |
+| usuario_id | UUID / FK (nullable) | Quién. NULL solo para los eventos que emite un proceso del backend sin usuario detrás (ej. el despacho de una notificación). |
+| rol | enum (nullable) | Veterinario / tutor / clínica_admin / sistema. Sale del token, nunca del cuerpo del request. |
+| clínica_id | UUID / FK (nullable) | Clínica de pertenencia del actor, si tiene. Es el corte por cuenta B2B. |
+| plataforma | enum | Web / iOS / Android. |
+| app_versión | string (nullable) | Versión del cliente que lo emitió. Es lo que permite leer una serie que cambia después de un despliegue. |
+| sesión_id | UUID (nullable) | Agrupa los eventos de un mismo uso de la app. Lo genera el cliente al abrir y lo descarta al cerrar. No es el token ni deriva de él. |
+| propiedades | JSON | Claves permitidas por evento, declaradas en el catálogo. Las demás se descartan al recibirlas. |
+| ocurrido_at | timestamp | Cuándo pasó, según el reloj de quien lo emitió. |
+| registrado_at | timestamp | Cuándo lo recibió el servidor. |
+| reloj_sospechoso | bool | Marca los eventos cuyo `ocurrido_at` no es creíble contra `registrado_at`. Se guardan igual, pero quedan fuera de las series. |
+
+> **No es la Auditoría y no la reemplaza.** La Auditoría (4.10) registra qué cambió un dato clínico y quién, para responder ante un reclamo: es prueba, se conserva, y no lleva nada que no sea el cambio. Esto registra cuánto tardó, desde qué pantalla y cuántas veces se abandonó a la mitad: es producto, se agrega y se borra a los 13 meses. Tienen dos propósitos, dos ciclos de vida y dos plazos de retención distintos.
+
+> **Ninguna fila lleva dato clínico, texto libre ni `paciente_id`** (Reglas de Negocio, 2.7). El `propiedades` con claves permitidas por evento es lo que hace cumplible la regla: un JSON abierto es por dónde termina entrando el nombre de la mascota.
+
+> Los dos relojes existen porque el tutor genera eventos sin conexión y los sube horas después (Sincronización Offline, 4.1). Toda métrica se calcula sobre `ocurrido_at`.
+
+> No lleva `deleted_at` ni se audita, con el mismo criterio que Notificación (4.12): es un registro operativo, nadie lo edita nunca y su única baja es la del plazo de retención — que es física, y es la única excepción del proyecto al "nunca borrado físico" (Telemetría de Producto, 8).
+
 ## 5. Matriz de permisos
 
 | Entidad | Quién escribe | Quién lee |
@@ -471,6 +545,8 @@ Cómo se le da acceso a alguien que puede todavía no tener cuenta.
 | Usuario (cuentas de tutor) | Solo el propio tutor (auto-registro) | Solo el propio tutor |
 | Clínica (datos administrativos y horario de atención) | Alta: administrador de la plataforma, fuera de la API. Edición: clínica_admin sobre su propia clínica | Clínica_admin sobre su propia clínica. Veterinario de esa clínica, solo lectura: necesita el horario de atención para agendar |
 | Usuario (cuentas de clínica_admin) | Administrador de la plataforma, fuera de la API | Clínica_admin sobre su propia cuenta |
+| Consulta atendida | Solo el veterinario, sobre los pacientes vinculados a su clínica: asienta, corrige y da de baja. El sistema, cuando la deduce de un Evento clínico con cita | Veterinario de la clínica que atendió. Clínica_admin, tutor y co-tutores sin acceso |
+| Evento de telemetría | Cada usuario, solo los suyos, por la ruta de ingesta; y el backend, para lo que emite él | Nadie por API en el MVP: se consulta por SQL (Telemetría de Producto, 6) |
 
 > El alcance del veterinario sobre la ficha de Tutor no está acotado a su clínica, a diferencia del que tiene sobre Paciente. El motivo es el proceso de alta de paciente (Reglas de Negocio, 4.1): la ficha del tutor se busca y se completa antes de que exista ningún Paciente que vincule a esa persona con una clínica, así que no hay dato sobre el cual acotarla. Es una excepción deliberada, a revisar cuando exista la entidad Paciente.
 

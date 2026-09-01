@@ -21,13 +21,14 @@ Leerlo antes de tocar código de ese subproyecto. Lo de acá no lo reemplaza.
 
 ## Documentos de referencia
 
-Los cinco son **contrato de producto**, no de implementación: valen igual para el backend y para el frontend, y por eso viven en una sola copia acá. Estuvieron duplicados en los dos repos y divergieron; no volver a copiarlos.
+Los seis son **contrato de producto**, no de implementación: valen igual para el backend y para el frontend, y por eso viven en una sola copia acá. Estuvieron duplicados en los dos repos y divergieron; no volver a copiarlos.
 
 1. **[docs/01-modelo-de-datos.md](docs/01-modelo-de-datos.md)** — entidades, campos, relaciones, campos transversales
 2. **[docs/02-reglas-de-negocio.md](docs/02-reglas-de-negocio.md)** — validaciones, motor de permisos, procesos de negocio
 3. **[docs/03-alcance-de-plataformas.md](docs/03-alcance-de-plataformas.md)** — qué rol accede a qué pantalla, desde qué plataforma
 4. **[docs/04-arquitectura.md](docs/04-arquitectura.md)** — capas, autenticación, entornos, rutas y CORS
 5. **[docs/11-sincronizacion-offline.md](docs/11-sincronizacion-offline.md)** — acceso sin conexión del tutor en móvil, bitácora de cambios, resolución de conflictos y datos en el dispositivo
+6. **[docs/12-telemetria-de-producto.md](docs/12-telemetria-de-producto.md)** — qué uso se mide, catálogo de eventos, retención y las métricas del piloto
 
 Propios de cada subproyecto: `backend/docs/` (05 stack, 06 estándares, 07 logging) y `frontend/docs/` (08 arquitectura frontend, 09 design system).
 

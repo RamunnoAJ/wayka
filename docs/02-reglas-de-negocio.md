@@ -35,6 +35,12 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Fecha no futura | Evento clínico | fecha no puede ser posterior a la fecha actual (un evento clínico registra algo que ya ocurrió; lo futuro es una Cita). |
 | Paciente vigente para cargar | Evento clínico | No se crean Eventos clínicos sobre un Paciente con `deleted_at`. El historial existente sigue consultable y editable (regla 4.5), pero no se le agregan episodios nuevos. |
 | Campo estructurado según el tipo | Evento clínico | `campo_estructurado` se valida contra el esquema fijo del `tipo` del evento (Modelo de Datos, 4.5): obligatorio y con forma exigida para vacuna, medicación y alergia, y NULL para consulta, cirugía, control y urgencia. Un JSON con claves ajenas al esquema, con faltantes, o presente en un tipo que no lo admite, se rechaza. |
+| Momento no futuro | Consulta atendida | `fecha_hora` no puede ser posterior al momento actual. Es el mismo criterio que el Evento clínico: lo que ya ocurrió se asienta, lo que va a ocurrir se agenda. |
+| Paciente vigente para asentar | Consulta atendida | No se asientan consultas sobre un Paciente con `deleted_at`, igual que no se le cargan eventos. |
+| Clínica vinculada | Consulta atendida | La clínica que asienta tiene que tener vínculo vigente con el paciente. Se resuelve contra el actor, no se recibe por la API. |
+| El profesional atiende en esa clínica | Consulta atendida | `veterinario_id` tiene que ser de un veterinario de esa clínica, tanto al asentar como al corregir. Un veterinario asienta la atención de un colega, no la de alguien de otra clínica. |
+| Una cita se atiende una sola vez | Consulta atendida | `cita_id` es único entre las consultas vigentes. Si viene, la Cita tiene que ser del mismo Paciente, de la misma clínica y no estar dada de baja; y `origen` tiene que ser `agendada`. Una consulta sin `cita_id` no puede declararse `agendada`. |
+| Consulta vigente y del mismo paciente | Evento clínico | El evento se guarda con `consulta_id` y ya no con una FK propia a la Cita (Modelo de Datos, 4.5). Si trae `consulta_id`, la consulta tiene que ser del mismo Paciente y estar vigente. Si en cambio declara la cita que cumple, se resuelve a la consulta de esa cita — y si trae las dos, tienen que ser la misma. |
 | Una medicación activa por droga | Medicación | No se permite crear una nueva Medicación con fecha_fin NULL para una droga que el paciente ya tiene activa. Debe cerrarse la anterior (fecha_fin) antes de abrir una nueva. |
 | Zona horaria válida | Clínica | zona_horaria tiene que ser un nombre IANA que el sistema pueda resolver. Una zona que no existe deja el horario de atención sin significado: "abre 09:00" no dice nada si no se sabe 09:00 de dónde. |
 | Horario de atención coherente | Clínica | hora_cierre tiene que ser posterior a hora_apertura. No se admite un horario que cruce la medianoche: una guardia nocturna es un caso que el MVP no modela, y aceptarlo acá lo haría parecer soportado. |
@@ -128,6 +134,23 @@ La dirección de Tutor y de Clínica son cuatro campos que viajan juntos: el tex
 > **Quién puede escribir la dirección no cambia con esto**: es exactamente quien ya podía escribir la ficha (sección 3.2). En Tutor, el propio tutor sobre la suya y el veterinario vinculado; en Clínica, el clínica_admin sobre la propia. El campo es parte de la ficha, no un permiso aparte.
 >
 > La dirección es **dato personal alcanzado por la Ley 25.326**, igual que el documento: queda cubierta por el `consentimiento_datos` que el tutor ya otorga al registrarse (4.9) y por la auditoría de la ficha. No se agrega un consentimiento nuevo por guardar el punto en el mapa — es el mismo domicilio que ya se pedía, con más precisión.
+
+### 2.7 Telemetría de producto
+
+El registro de uso (Modelo de Datos, 4.17) es la única entidad del sistema que existe para ser mirada en masa, y por eso es la que más se equivoca si se la deja crecer sola. El catálogo completo está en Telemetría de Producto, sección 5; las reglas duras son estas cuatro.
+
+| Regla | Validación |
+|---|---|
+| Nombre del catálogo | `nombre` pertenece al enum del catálogo. Un evento con un nombre desconocido se **descarta en silencio**, no se rechaza el lote. |
+| Propiedades por lista permitida | Cada evento declara qué claves acepta en `propiedades`. Las que no están se descartan al recibirlas, antes de persistir. |
+| Nunca dato clínico, texto libre ni `paciente_id` | Ninguna propiedad admite texto escrito por una persona, ni identifica a una mascota. Los valores son enums, números y booleanos. |
+| El actor sale del token | `usuario_id`, `rol` y `clínica_id` los completa el backend desde la sesión. Si vienen en el cuerpo, se ignoran. |
+
+> **Descartar en silencio es correcto acá y en ningún otro lado de la API.** Un cliente que emite un evento mal armado no tiene nada que corregir ni al usuario a quien avisarle: devolverle un error lo empujaría a reintentar en loop lo que nunca va a ser aceptado. Lo descartado se cuenta en el log del backend, que es donde se ve que una versión nueva del cliente está emitiendo mal.
+>
+> **La telemetría nunca bloquea al usuario.** Si el registro falla —la ingesta, o la emisión desde la capa de negocio—, la acción sigue adelante y el error queda en el log. Un evento perdido es un dato menos; una carga clínica que no se guarda porque falló una métrica es un incidente.
+>
+> El `usuario_id` es **dato personal** y queda alcanzado por el consentimiento que el tutor ya otorga (4.9) y por el plazo de retención de 13 meses. Un pedido de supresión borra también la telemetría del titular: ninguna obligación legal la retiene, a diferencia del historial clínico.
 
 ## 3. Motor de permisos
 
@@ -297,7 +320,7 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 2. Se valida que el Paciente esté vigente: sobre una mascota dada de baja no se cargan episodios nuevos (regla 2.2).
 3. Se valida fecha no futura (regla 2.2).
 4. Se valida `campo_estructurado` contra el esquema fijo del tipo (regla 2.2 y Modelo de Datos, 4.5): vacuna, medicación y alergia lo exigen completo; los demás tipos lo exigen NULL.
-5. Se persiste el Evento clínico con veterinario_id = usuario autenticado (trazabilidad automática, no editable).
+5. Se persiste el Evento clínico con veterinario_id = usuario autenticado (trazabilidad automática, no editable) y con `consulta_id`, que es el único vínculo que guarda con la atención: si se carga desde una **Consulta atendida** ya asentada, es la suya; si declara la cita que cumple, es la de esa cita, asentada en la misma transacción si todavía no estaba (4.21). Si no declara ninguna, queda en NULL, que es un caso válido y no un error.
 6. Se registra la creación en Auditoría con valor_nuevo = contenido del evento.
 7. Un evento ya cargado lo puede editar o dar de baja cualquier Veterinario de la clínica del Paciente, no solo su autor (regla 3.2). La edición nunca reasigna `veterinario_id`, y tanto la edición como la baja quedan auditadas.
 8. Editar el `tipo` de un evento **descarta el `campo_estructurado` anterior**: el esquema que rige es el del tipo nuevo, y quien cambia el tipo manda los campos que ese tipo exige. Si el tipo nuevo no admite campo estructurado, alcanza con omitirlo.
@@ -322,7 +345,7 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 1. Creación: el Veterinario programa una Cita con fecha y hora, en estado = "pendiente", **en su propia clínica**, que tiene que tener vínculo vigente con el paciente. La hora tiene que caer dentro del horario de atención de esa clínica y sobre su grilla de turnos (regla 2.2). Puede asignarle un profesional o dejarla de la clínica para repartirla después.
 2. Asignación o reasignación: el Veterinario asigna, cambia o quita el profesional mientras la cita siga pendiente. Se valida que no le quede otra cita en el mismo momento (regla 2.2). Sacar la asignación es dejarla de nuevo de la clínica, no darla de baja.
 3. Confirmación o reagenda: el Tutor puede modificar fecha_programada y notificar_tutor dentro de los permisos definidos (sección 3.2), pero no puede cambiar estado directamente. Solo se reagenda una cita pendiente (regla 2.2).
-4. Transición a "cumplido": ocurre cuando el Veterinario carga un Evento clínico con `cita_id` apuntando a esa Cita (Modelo de Datos, 4.5). Se valida que la Cita sea del mismo Paciente que el evento y que no esté ya cumplida. Una Cita **vencida** también pasa a cumplido por esta vía: la mascota llegó tarde y se la atendió igual, y dejarla vencida para siempre falsearía el historial.
+4. Transición a "cumplido": ocurre cuando se asienta la **Consulta atendida** que referencia a esa Cita (4.21), sea porque el Veterinario la asentó al atender o porque la dedujo la carga de un Evento clínico que declara la cita que cumple. Se valida que la Cita sea del mismo Paciente y que no esté ya cumplida. Una Cita **vencida** también pasa a cumplido por esta vía: la mascota llegó tarde y se la atendió igual, y dejarla vencida para siempre falsearía el historial.
 5. Transición a "vencido": la cita cuya fecha_programada ya pasó sin haber sido marcada como cumplida cambia de estado automáticamente. Este es un proceso batch/programado, no una acción de usuario.
 6. Baja: retirar del calendario una cita que no va a ocurrir es una baja lógica, no un estado. La puede hacer el veterinario de la clínica o el tutor de la mascota (regla 2.4).
 
@@ -339,7 +362,7 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 
 ### 4.5 Borrado lógico en cascada de negocio
 
-Cuando se da de baja lógica un Paciente, sus Eventos clínicos, Medicación, Citas y Adjuntos NO se borran automáticamente en cascada. Quedan visibles y consultables desde el Paciente (aunque el Paciente ya no aparezca en listados activos), preservando la trazabilidad completa del historial. Solo un borrado lógico explícito sobre cada entidad hija la retira de las vistas activas de esa entidad en particular.
+Cuando se da de baja lógica un Paciente, sus Eventos clínicos, Medicación, Citas, Consultas atendidas y Adjuntos NO se borran automáticamente en cascada. Quedan visibles y consultables desde el Paciente (aunque el Paciente ya no aparezca en listados activos), preservando la trazabilidad completa del historial. Solo un borrado lógico explícito sobre cada entidad hija la retira de las vistas activas de esa entidad en particular.
 
 Que el historial siga consultable exige que **la ficha del Paciente también lo esté**: sin poder leer la mascota no hay desde dónde consultar lo que cuelga de ella. La lectura por id de un Paciente dado de baja devuelve la ficha, con `deleted_at` completo (Modelo de Datos, 4.2). Lo que se rechaza es la escritura:
 
@@ -347,10 +370,10 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 |---|---|
 | Leer la ficha por id | Devuelve la ficha, con `deleted_at` completo. |
 | Listarla entre los pacientes de la clínica o del tutor | No aparece: los listados filtran por `deleted_at IS NULL`. |
-| Leer su historial, medicación, citas y adjuntos | Se consultan normalmente. |
+| Leer su historial, medicación, citas, consultas atendidas y adjuntos | Se consultan normalmente. |
 | Editar la ficha, o darla de baja otra vez | Se rechaza. |
 | Compartirla, invitar a un co-tutor o revocar un acceso | Se rechaza. |
-| Cargar Eventos clínicos, Medicación, Citas o Adjuntos nuevos | Se rechaza (reglas 2.2). |
+| Cargar Eventos clínicos, Medicación, Citas, Consultas atendidas o Adjuntos nuevos | Se rechaza (reglas 2.2). |
 | Editar o dar de baja los registros ya existentes | Se permite: corregir un diagnóstico mal cargado no depende de que la mascota siga en la cartera. |
 
 > Esta regla prioriza no perder trazabilidad clínica por sobre la simplicidad de un borrado en cascada — es consistente con el criterio de trazabilidad y no destrucción definido en el Modelo de Datos.
@@ -504,6 +527,46 @@ El calendario existe para que la mascota llegue a su control; el recordatorio es
 > **Rechazar** es del invitado y anula la invitación sin dar acceso; el enlace del correo deja de servir. Se distingue de **anular**, que es del dueño arrepintiéndose de haberla mandado: son la misma escritura con dos motivos distintos, y quién puede hacerla no es el mismo.
 
 > **Revocar un acceso** lo hace el dueño, o el propio co-tutor sobre el suyo. El efecto en el servidor es inmediato; en un teléfono sin señal, no — ver Sincronización sin Conexión, 8, que explica hasta cuándo puede seguir leyéndose una copia ya descargada y qué se hace al respecto. La interfaz se lo dice al dueño en el momento de revocar, en vez de prometerle algo que el sistema no puede cumplir.
+
+### 4.20 Registro de un evento de telemetría
+
+Dos caminos, según quién lo emita (Telemetría de Producto, 2).
+
+**Lo que emite el backend** — todo hecho que el servidor ya ve: se creó un evento clínico, se canjeó una invitación, se despachó un push. Lo escribe la capa de negocio en el mismo request o job que atendió la acción, y no depende de que ningún cliente lo mande. Es lo que evita tener dos cifras del mismo hecho y una discusión sobre cuál vale.
+
+**Lo que emite el cliente** — solo lo que el backend no puede ver: qué pantalla se abrió, cuánto tardó un formulario, si se abandonó, si la sesión salió de la copia local, si el usuario llegó desde un push.
+
+1. El cliente acumula eventos y los despacha **en lote** a la ruta de ingesta, autenticado. No hay un request por evento.
+2. El backend valida la forma del lote y su techo de tamaño. Un lote mal formado se rechaza; un lote válido se acepta entero.
+3. Evento por evento: descarta los de nombre desconocido, poda las propiedades fuera de la lista permitida (2.7), completa `usuario_id`, `rol` y `clínica_id` desde el token, sella `registrado_at` y marca `reloj_sospechoso` si el `ocurrido_at` no es creíble contra él.
+4. Persiste lo que quedó. La respuesta es exitosa aunque adentro se haya descartado todo.
+
+> **En móvil la cola vive en el dispositivo y sube con el ciclo de sincronización** (Sincronización sin Conexión, 4.1), por su propia ruta. Con dos diferencias respecto de las mutaciones: la cola **tiene techo y descarta lo más viejo** —una mutación no se descarta nunca, un evento sí— y nunca demora ni bloquea la subida de mutaciones. El dato clínico va primero.
+
+> **El plazo de retención lo aplica un job**: a los 13 meses borra las filas de detalle y conserva agregados sin `usuario_id`. Es un borrado **físico**, la única excepción del proyecto a la regla de 2.4, y está argumentada en Telemetría de Producto, 8.
+
+### 4.21 Registro de una consulta atendida
+
+El hecho asistencial (Modelo de Datos, 4.16), separado de lo que se escriba sobre él. Dos caminos.
+
+**Asentada por el veterinario** — el camino que importa:
+
+1. Desde la agenda del día, sobre una cita: un toque. Desde la ficha del paciente, para la atención que nadie agendó: un toque y elegir el origen (espontánea o urgencia).
+2. Se validan paciente vigente, clínica vinculada, profesional de esa clínica, momento no futuro y cita no atendida (regla 2.2). `clínica_id` sale del actor y `veterinario_id` es por defecto quien asienta, cambiable a otro del plantel.
+3. Se persiste con `asentada_automáticamente = false` y, si trae `cita_id`, se transiciona esa Cita a `cumplido` en la misma transacción (4.4).
+4. Se registra en Auditoría, como cualquier escritura asistencial.
+
+**Deducida por el sistema** — cuando se carga un Evento clínico que declara la cita que cumple y esa cita no tiene consulta asentada, se asienta una en la misma transacción, con `origen = agendada`, `veterinario_id` = el autor del evento, `fecha_hora` = la fecha del evento y `asentada_automáticamente = true`. El evento queda vinculado a ella.
+
+> **Se deduce sola porque perder el hecho sería absurdo**: un evento clínico que dice qué cita cumplió es prueba de que la atención ocurrió. Lo que no hace es agregar información a la métrica —esas filas entraron por el mismo camino que el numerador—, y por eso quedan marcadas y la cobertura se lee sobre las asentadas por una persona (Telemetría de Producto, 9).
+>
+> **El evento ya no guarda su propia FK a la Cita** (Modelo de Datos, 4.5): declarar la cita al cargar es un atajo de entrada que resuelve la consulta, y lo que queda persistido es `consulta_id`. Así de una misma atención pueden colgar varios eventos sin que haya que elegir cuál se queda con la cita.
+>
+> **No se deduce del evento sin cita.** Ahí no hay nada que confirme que la atención fue hoy y no una carga histórica, y asentarla igual haría que toda atención documentada tuviera su asiento: la cobertura daría 1 siempre y no mediría nada. Un evento sin consulta queda con `consulta_id` NULL, y cuántos hay es la lectura inversa — cuánto se está escribiendo sin asentar.
+>
+> **Corrección y baja**: se corrigen la fecha, el profesional y el origen; se da de baja lógica el asiento cargado por error. Dar de baja la consulta de una cita **no revierte** la Cita a pendiente si ya hay un Evento clínico colgado de ella: lo que se atendió y se documentó ocurrió, más allá de que el asiento estuviera mal. Si no hay ningún evento, la Cita vuelve a `pendiente` o a `vencido` según su fecha.
+>
+> **La baja del Paciente no arrastra las consultas**, con el mismo criterio que el resto del historial (4.5): quedan consultables desde la ficha y siguen contando para las métricas del período en que ocurrieron. Lo que se rechaza es asentar consultas nuevas.
 
 ## 5. Fuera de alcance de este documento
 

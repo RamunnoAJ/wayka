@@ -70,8 +70,14 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - **Qué otras clínicas la atienden**, solo el nombre. Es continuidad de cuidado —no repetir una vacuna que puso otra—, no una ventana a la cartera ajena.
 - **Dejar de atenderla**: revoca el vínculo de la propia clínica y la saca de la cartera, sin tocar el registro. Se rechaza si quedan citas pendientes. El veterinario **no da de baja la mascota**: eso es del dueño (Reglas de Negocio, 2.4).
 
+### 3.3.1 Registro de la atención (rol: Veterinario)
+- **Asentar que se atendió**, en un toque: desde la agenda del día sobre la cita, o desde la ficha del paciente cuando nadie la agendó (ahí se elige el origen: espontánea o urgencia). Es el hecho asistencial, y es independiente de cargar el historial — se asienta al atender, aunque el evento clínico se escriba a la noche (Reglas de Negocio, 4.21).
+- Por defecto atiende quien asienta; se puede indicar a otro profesional del plantel.
+- **Atendidas de hoy, y cuáles no tienen historial cargado**: la lista de trabajo pendiente del día. Es lo único que hace que asentar valga la pena para quien lo hace, y no solo para quien mira las métricas.
+- Corregir o dar de baja un asiento cargado por error.
+
 ### 3.4 Carga de evento clínico (rol: Veterinario)
-- Formulario por tipo de evento (consulta, vacuna, cirugía, control, urgencia).
+- Formulario por tipo de evento (consulta, vacuna, cirugía, control, urgencia). Si se entra desde una atención asentada (3.3.1), el evento queda vinculado a ella sin que haya que elegir nada.
 - Campos estructurados obligatorios para vacunas y alergias (según nota 4.5 del Modelo de Datos).
 - Adjuntar archivos (foto, PDF, estudio) al evento.
 
@@ -82,6 +88,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 
 ### 3.6 Calendario / Citas (rol: Veterinario)
 - Creación de citas (vacuna, control, cirugía programada) con **fecha y hora**, sobre la grilla que definen el horario de atención y la duración del turno de la clínica (3.2). Las horas fuera de la grilla no se ofrecen: el backend las rechaza igual, pero ofrecerlas y después fallar es un error que la interfaz puede evitar.
+- La cita atendida se marca como cumplida desde la agenda, asentando la atención (3.3.1). No hay un control de "cumplida" aparte: cumplir una cita es haber atendido.
 - Vista de citas pendientes y vencidas de la clínica, por día, semana y mes, con quién atiende cada una. Son las citas agendadas **en esta clínica**: una mascota atendida también en otra tiene allá su propia agenda, que acá no se ve.
 - **Asignación de profesional**, opcional: una cita puede quedar de la clínica y repartirse después. Al asignar, no se ofrecen los profesionales que ya tienen otra cita en ese momento — el backend lo rechaza igual, pero ofrecerlo y después fallar es un error que la interfaz puede evitar.
 - Filtrar la agenda por profesional, incluyendo "sin asignar": es la lista de lo que todavía hay que repartir.
@@ -93,7 +100,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 
 ## 4. Pantallas mínimas — Móvil (Veterinario)
 
-Mismo conjunto funcional que las secciones 3.3 a 3.6, adaptado a formato móvil. No se listan de nuevo por tratarse de las mismas funcionalidades con paridad total.
+Mismo conjunto funcional que las secciones 3.3 a 3.6 —incluido el asiento de la atención (3.3.1), que en el teléfono es el caso principal: se atiende parado al lado de la mesa, no sentado frente a la computadora—, adaptado a formato móvil. No se listan de nuevo por tratarse de las mismas funcionalidades con paridad total.
 
 > Nota de diseño: al tener paridad completa, conviene evaluar en la etapa técnica si conviene un codebase compartido (ej. framework multiplataforma) para el veterinario, en vez de mantener dos implementaciones separadas del mismo alcance funcional.
 
