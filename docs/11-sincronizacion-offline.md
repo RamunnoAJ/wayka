@@ -27,6 +27,10 @@ Ese conjunto **no está acotado por clínica**: una mascota puede estar atendida
 
 > Vale la pena decirlo explícitamente porque es contraintuitivo: acceso offline y multi-clínica parecen el mismo problema y no lo son. El aislamiento por clínica es una regla del motor de permisos que acota al veterinario y al clínica_admin (Modelo de Datos, sección 5); la replicación es un subconjunto de lo que una audiencia ya puede leer. Para el tutor esas dos cosas no coinciden, y modelar la copia local por clínica le escondería mascotas que sí alcanza.
 
+**Todo lo que el tutor lee sale de esa copia**, no de la red: el listado de mascotas, la ficha con su historial y su medicación, y la agenda. Es lo que hace que la app abra igual sin señal, con datos que pueden estar unos minutos atrás y que el indicador de sincronización fecha.
+
+La excepción son los **archivos** de los Adjuntos, y no es un olvido: mirarlos exige la URL prefirmada, que vence en minutos y por eso no se replica (sección 8). La lista de qué archivos tiene una mascota sí está en el dispositivo, así que sin conexión la ficha los enumera y no los abre — bastante mejor que un bloque de error donde debería haber una lista.
+
 La invariante que sí las une, y que no se negocia: **lo replicable es siempre un subconjunto de lo que el motor de permisos ya autoriza**. Ningún dispositivo guarda un registro que el backend le negaría en una lectura online.
 
 El co-tutor con nivel de **solo lectura** también tiene copia local, y no es una concesión: la invariante de arriba dice que lo replicable es un subconjunto de lo que el motor ya autoriza, y ese tutor está autorizado a leer esa mascota. Lo que su nivel acota es qué puede escribir, y de eso se ocupa la sección 5.
@@ -87,6 +91,18 @@ Reglas:
 - **Un registro que sale del conjunto por baja viaja como baja.** Lo que ya no viaja es el registro que sale porque el acceso se revocó: ahí no hay baja que enviar, y de eso se ocupa la regla anterior.
 - **Una mascota dada de baja no es una lápida.** La ficha de un Paciente con `deleted_at` se sigue leyendo, con su historial completo (Modelo de Datos, 4.2), así que viaja como un registro más y se guarda en el dispositivo. Las lápidas reales son las de Evento clínico, Medicación, Cita y Adjunto: esos sí salen de la copia local, porque su baja no se expone en ninguna lectura.
 - **La página del delta es más grande que la de un listado de pantalla.** Hasta 500 registros por pedido, 200 por defecto, contra los 200/50 del resto de la API: acá no hay nadie mirando la respuesta, y una carga inicial paginada de a 50 son decenas de viajes contra una conexión que ya demostró ser mala.
+
+## 4.1 Cuándo sincroniza
+
+Tres momentos, y ninguno es un temporizador:
+
+- **Al arrancar la sesión del tutor**, que es cuando la copia puede estar más vieja.
+- **Cuando vuelve la conexión.**
+- **Cuando la app vuelve del fondo.** Es el que más ocurre en la práctica: el teléfono pasa la mayor parte del tiempo con la app suspendida, y volver a abrirla es justo cuando el tutor quiere ver lo que la clínica escribió. Sin esto, la copia solo se pone al día si el proceso se reinició o si la red cambió de estado en ese preciso momento.
+
+**No hay reintento periódico ni backoff.** Una corrida que falla por falta de red la vuelve a disparar el evento de conexión; una que falla por otra cosa volvería a fallar igual. Un temporizador solo agregaría viajes contra una conexión que ya demostró ser mala.
+
+Corre **una sola a la vez**: dos en paralelo se pisarían la marca y podrían mandar la misma mutación dos veces. El backend la deduplica por `id_mutacion`, pero gastar el viaje para que lo haga es trabajo al pedo.
 
 ## 5. Subida de mutaciones
 
