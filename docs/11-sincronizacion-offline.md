@@ -159,6 +159,7 @@ Una copia local del historial clínico de una mascota es un dato personal de sal
 - **Cerrar sesión destruye la copia local**, no la conserva por si el usuario vuelve. Es la misma decisión que revocar la cadena de sesión entera al cerrar (Arquitectura, 4.2.1): el estado que sobrevive a un cierre de sesión es estado que alguien más puede leer.
 - **La copia local no sobrevive a un token de refresco rechazado.** Si el backend corta la sesión —cuenta desactivada, reuso detectado—, el cliente descarta la copia en el mismo paso en que vuelve a la pantalla de ingreso.
 - **Sin sesión válida no hay lectura offline.** El vencimiento del token de acceso no bloquea la lectura local (sería inutilizable: quince minutos sin señal y la app deja de servir), pero el vencimiento del **refresco** sí. Eso acota cuánto tiempo puede un dispositivo mostrar datos sin volver a demostrar que la sesión sigue viva: 30 días por defecto (`REFRESH_TOKEN_TTL`).
+- **La copia de una mascota ajena caduca a los 7 días.** Pasado ese plazo sin una sincronización que confirme el acceso, el dispositivo **borra** la ficha compartida y todo lo que cuelga de ella. Las mascotas propias no caducan: su límite sigue siendo el del refresco.
 
 - **Revocar un acceso saca la mascota del dispositivo en la próxima sincronización.** El acceso revocado llega como un cambio más y dispara la carga inicial de la sección 4, que rehace la copia sin esa mascota. Para que eso ocurra en segundos y no en la próxima vez que el tutor abra la app, revocar además **empuja un aviso silencioso** a los dispositivos de esa persona, que dispara la sincronización sin mostrar nada en pantalla.
 
@@ -168,7 +169,15 @@ Una copia local del historial clínico de una mascota es un dato personal de sal
 >
 > Es una fuga de **lectura**, sobre datos que esa persona ya había visto legítimamente, y no de escritura: cualquier mutación suya rebota contra el vínculo actual. Aun así es una fuga, y es el punto más débil de este diseño.
 >
-> **Pendiente, con la decisión de producto sin tomar**: acotar por antigüedad la copia de las mascotas **ajenas** —que dejen de abrirse si hace más de N días que no se confirma el acceso, con N bastante menor que 30— manteniendo el límite del refresco para las propias, que nadie puede revocar. Cerraría el hueco exactamente sobre el conjunto que lo produce, sin castigar al tutor que solo tiene mascotas suyas. Lo que falta no es el mecanismo, es el número.
+> **La caducidad por antigüedad es lo que acota esa ventana**, y por eso son 7 días y no 30: cae exactamente sobre el conjunto que produce la fuga —las mascotas ajenas— sin castigar al tutor que solo tiene las suyas. Un teléfono que estuvo una semana entera sin conectarse deja de mostrar el historial de un animal que no es de su dueño, y lo recupera en la primera sincronización si el acceso sigue vigente.
+>
+> **Corre en el dispositivo y no depende de la red**, que es todo el punto: una caducidad que necesitara sincronizar para aplicarse no cubriría el único caso que existe para cubrir. Se evalúa cada vez que se abre el listado de mascotas y al terminar cada sincronización.
+>
+> **Borra en vez de esconder.** Dejar el historial de un animal ajeno en disco y taparlo en la interfaz sería resolver el problema en el único lugar donde no está.
+>
+> El listado avisa que dejó de mostrar mascotas compartidas, sin nombrarlas: nombrarlas sería conservar el dato que se acaba de borrar. Sin el aviso, una mascota que desaparece se lee como un error de la aplicación.
+>
+> Lo que **no** se hizo es acortar `REFRESH_TOKEN_TTL` para todos: castiga a cualquier tutor por un caso de revocación, y el umbral por mascota ajena resuelve lo mismo con precisión.
 >
 > Para el veterinario, cuya copia sería de pacientes ajenos por definición y en volumen, **el balance sigue sin cerrar**, y es una de las razones por las que la sección 9 no es un simple ensanchamiento del alcance.
 
