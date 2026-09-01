@@ -8,21 +8,30 @@ Versión 1.0 · Documento técnico de referencia
 Este documento define el modelo de datos para la fase de MVP de Wayka: historial clínico colaborativo y calendario de eventos, con un piloto de una única clínica veterinaria. El modelo se diseñó bajo tres criterios rectores:
 
 - **Portabilidad**: los registros deben poder ser leídos por un veterinario ajeno a la clínica de origen en una futura Fase 2 (matching geolocalizado de urgencias).
-- **Permisos claros**: el veterinario es la fuente de verdad clínica; el tutor tiene lectura y puede editar únicamente datos no clínicos.
+- **Permisos claros**: el veterinario es la fuente de verdad clínica; el tutor es el dueño de la ficha de su mascota y de quién la ve. El tutor nunca escribe dato clínico; sí edita los datos no clínicos de la mascota y decide con qué clínicas y con qué otras personas la comparte.
 - **Trazabilidad y no destrucción**: ningún dato clínico se borra físicamente; todo cambio queda auditado. Esto responde al riesgo legal de responsabilidad ante errores identificado en la etapa de análisis de viabilidad (Ley 25.326 de Protección de Datos Personales).
 
-Alcance del MVP: un paciente pertenece a una única clínica durante toda esta fase (relación fija, sin tabla intermedia). La multi-clínica queda reservada para la Fase 2.
+Alcance del MVP: **un paciente puede ser atendido por varias clínicas y visto por varios tutores**, y las dos cosas se resuelven con tablas de vínculo revocables. La mascota tiene siempre un único dueño —el tutor que la dio de alta, o aquel a cuyo nombre la dio de alta la clínica— y es él quien otorga y retira todo acceso.
+
+> Esto reemplaza al criterio de la primera versión, que fijaba un paciente a una única clínica por medio de una FK y reservaba la multi-clínica para la Fase 2 (ver sección 6). Se adelantó porque la relación fija no solo impedía la segunda clínica: obligaba a que toda mascota naciera de una, y dejaba afuera al tutor que quiere tener el historial de su animal antes de pisar una veterinaria, y a la familia que comparte el cuidado del mismo animal.
 
 ## 2. Diagrama de relaciones
 
 ```
-Tutor 1───N Paciente N───1 Clínica
+Tutor 1───N Paciente          (tutor_id: el dueño)
+Tutor N───N Paciente          (Acceso de co-tutor: edición o lectura, revocable)
+Clínica N───N Paciente        (Vínculo con clínica, revocable)
+
+Invitación de co-tutor ──canje──> Acceso de co-tutor
+
+Paciente
                 │
                 ├──N Evento clínico ──N Adjuntos
                 │         └── veterinario_id (trazabilidad)
                 │
                 ├──N Medicación (activa si fecha_fin IS NULL)
                 └──N Cita (calendario) ──N Notificación
+                          └── clínica_id (quién la atiende)
 
 Veterinario N───1 Clínica
 
@@ -31,7 +40,8 @@ Usuario N───1 Veterinario  (si tipo_usuario = veterinario)
 Usuario N───1 Clínica  (si tipo_usuario = clínica_admin)
 Usuario N───1 Clínica  (clínica_de_pertenencia_id: veterinario y clínica_admin)
 
-Auditoría ──registra cambios de──> Evento clínico, Medicación, Cita, Paciente, Adjuntos
+Auditoría ──registra cambios de──> Evento clínico, Medicación, Cita, Paciente, Adjuntos,
+                                   Vínculo con clínica, Acceso de co-tutor
 
 Cita N───1 Veterinario  (veterinario_id: a quién le toca atender, opcional)
 ```
@@ -101,8 +111,7 @@ Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No e
 | fecha_nacimiento | date | — |
 | sexo | string | — |
 | peso_actual | decimal | Editable por tutor o veterinario. |
-| tutor_id | UUID / FK | Referencia a Tutor. |
-| clínica_id | UUID / FK | Clínica a la que pertenece (fija en el MVP). |
+| tutor_id | UUID / FK | El **dueño** de la mascota. Quien la dio de alta, o aquel a cuyo nombre la dio de alta la clínica. |
 | identificador_externo | string (nullable) | Número de chip/microchip. Clave para portabilidad en Fase 2. |
 
 > `peso_actual` se persiste como NUMERIC, no como punto flotante binario: el peso se guarda y se compara al gramo, y un `double` redondea de formas que en una historia clínica se notan. Debe ser mayor a cero.
@@ -111,7 +120,11 @@ Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No e
 >
 > `identificador_externo` es único entre fichas vigentes cuando está cargado: dos mascotas no pueden compartir número de chip.
 >
-> La baja del Paciente es lógica y no cascadea (Reglas de Negocio, 4.5). Ni `clínica_id` ni `tutor_id` son editables: la primera es fija en el MVP (regla 2.2) y cambiar la segunda sería transferir la mascota a otra persona sin dejar rastro de la transferencia.
+> La baja del Paciente es lógica y no cascadea (Reglas de Negocio, 4.5). `tutor_id` no es editable: cambiarlo sería transferir la mascota a otra persona sin dejar rastro de la transferencia. La transferencia de propiedad queda fuera de alcance; lo que sí existe es dar acceso a otro tutor, que es otra cosa y se modela aparte (4.14).
+>
+> **La clínica no vive en esta tabla.** La llevaba en la primera versión, como FK fija desde el alta, y esa columna se eliminó: una mascota puede ser atendida por varias clínicas, por ninguna —la que el tutor todavía no compartió— y puede dejar de serlo. Todo eso es un vínculo con estado y no un campo de la ficha, y vive en 4.13. Dejarla como columna nullable habría sido peor que sacarla: una columna que ya no decide ni el alcance ni la agenda pero sigue estando es la que alguien va a volver a leer por error.
+>
+> **El dueño sí es un campo y no una fila de 4.13**, y la asimetría es deliberada: es lo que garantiza por construcción que toda mascota tenga exactamente una persona responsable. Modelarlo como un vínculo más obligaría a sostener con un índice único parcial algo que la columna `NOT NULL` ya sostiene sola.
 >
 > **`deleted_at` se expone en la API de Paciente**, a diferencia del resto de las entidades. Es la consecuencia directa de la regla 4.5: la ficha de una mascota dada de baja se sigue leyendo, con su historial, su medicación, sus citas y sus adjuntos completos — pero no admite escrituras nuevas. Sin el campo en la respuesta, el cliente no tiene forma de distinguir esa ficha de una vigente y le ofrecería al veterinario acciones que el backend va a rechazar. Es un dato de presentación, no un permiso: quién puede leerla lo sigue decidiendo el motor de permisos.
 
@@ -217,6 +230,7 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 |---|---|---|
 | id | UUID / PK | Identificador único. |
 | paciente_id | UUID / FK | — |
+| clínica_id | UUID / FK | La clínica que atiende esta cita. Fija desde el alta. |
 | tipo | enum | Próxima vacuna / control / cirugía programada. |
 | fecha_programada | timestamp | Momento de la cita, con hora. Cae dentro del horario de atención de la clínica y sobre la grilla de turnos (4.3). |
 | veterinario_id | UUID / FK (nullable) | Profesional que va a atender. NULL cuando la cita es de la clínica y todavía no se repartió. |
@@ -233,7 +247,13 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 >
 > Un veterinario **no puede tener dos citas pendientes en el mismo momento** (Reglas de Negocio, 2.2), y eso es lo que hace que la asignación signifique algo. Las citas sin asignar no colisionan entre sí: sin profesional no hay a quién solapar.
 >
-> El **alcance no cambia**: se sigue resolviendo contra la mascota. Que a un veterinario le toque una cita no le da acceso a esa mascota, ni que no le toque se lo quita — cualquiera del plantel atiende a los pacientes de su clínica. La asignación es organización del trabajo, no un permiso.
+> El **alcance no cambia**: se sigue resolviendo contra la mascota. Que a un veterinario le toque una cita no le da acceso a esa mascota, ni que no le toque se lo quita — cualquiera del plantel atiende a los pacientes que su clínica tiene vinculados. La asignación es organización del trabajo, no un permiso.
+>
+> **`clínica_id` entró cuando el paciente dejó de tener clínica propia** (4.2), y no es una denormalización: es el dato que se perdió. Todas las reglas de agenda —el horario de atención, la `zona_horaria` en la que se lee la hora, la grilla de turnos y "el profesional atiende en esa clínica" (Reglas de Negocio, 2.2)— hablaban de "la clínica del paciente", y con una mascota atendida en tres esa expresión dejó de tener referente único: las 09:00 son válidas o no según de cuál se hable. La cita dice en cuál se agenda, y con eso las cuatro reglas vuelven a significar lo mismo que significaban.
+>
+> Se resuelve contra el actor y **no se recibe por la API**: una cita nace en la clínica del veterinario que la agenda. Recibirla del cliente sería dejar agendar en la agenda de otro.
+>
+> **Es fija.** Mudar una cita de clínica le cambiaría la grilla, el huso horario y la validez del profesional asignado, los tres a la vez: eso no es editar una cita, es dar de baja una y agendar otra. La clínica tiene que tener vínculo vigente con el paciente al momento del alta.
 
 ### 4.8 Adjuntos
 
@@ -359,17 +379,91 @@ Los formatos admitidos dependen del `tipo` declarado: **foto** acepta cualquier 
 
 > El par (`cita_id`, `tipo`) es único: es lo que hace idempotente al encolado y evita que reagendar una cita duplique su recordatorio.
 
+### 4.13 Vínculo con clínica
+
+Qué clínicas atienden a una mascota. Es lo que reemplaza a la vieja FK `Paciente.clínica_id`.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| id | UUID / PK | Identificador único. |
+| paciente_id | UUID / FK | La mascota. |
+| clínica_id | UUID / FK | La clínica que la atiende. |
+| origen | enum | Alta de la clínica / compartido por el tutor / migración. |
+| otorgado_por_usuario_id | UUID / FK (nullable) | Quién lo otorgó. |
+| otorgado_at | timestamp | Desde cuándo la atiende. |
+| revocado_at | timestamp (nullable) | NULL = vigente. |
+| revocado_por_usuario_id | UUID / FK (nullable) | Quién lo revocó. |
+
+> **Revocar no es un borrado lógico**, y por eso el campo no se llama `deleted_at`. Que una clínica haya atendido a una mascota entre marzo y agosto es un hecho del negocio que hay que poder leer después: la fila revocada se conserva entera y no se toca nunca más. Es la misma familia de decisiones que "nunca borrado físico" (Reglas de Negocio, 2.4), aplicada a un vínculo en vez de a un registro clínico.
+>
+> Una clínica no se vincula dos veces a la misma mascota **entre los vínculos vigentes**. La unicidad es parcial y no total a propósito: revocar y volver a compartir tiene que poder dejar una fila nueva sin pisar el rastro de la anterior.
+>
+> `otorgado_por_usuario_id` es nullable **solo para `origen = migración`**: los vínculos que existían antes de que compartir fuera una acción no tienen autor real, e inventarle uno falsearía el dato. Es el mismo criterio con el que la Auditoría deja `usuario_id` en NULL para las acciones del sistema (4.10).
+>
+> **Revocar no toca el historial.** Los Eventos clínicos, la Medicación y los Adjuntos que esa clínica escribió quedan donde están, con su autoría: `veterinario_id` identifica a quien los escribió y no depende de que el vínculo siga vivo. Lo que la clínica pierde es poder leer y escribir de ahí en adelante, y que la mascota figure en su cartera.
+
+### 4.14 Acceso de co-tutor
+
+Qué otras personas ven una mascota que no es suya. El dueño no aparece acá: el dueño es `Paciente.tutor_id`, y a él no le otorga acceso nadie.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| id | UUID / PK | Identificador único. |
+| paciente_id | UUID / FK | La mascota. |
+| tutor_id | UUID / FK | Quien recibe el acceso. |
+| nivel | enum | Edición / lectura. |
+| otorgado_por_usuario_id | UUID / FK | El dueño. |
+| otorgado_at | timestamp | — |
+| consentimiento_at | timestamp | Cuándo aceptó recibir estos datos. Obligatorio. |
+| invitación_id | UUID / FK (nullable) | La invitación que se canjeó (4.15). |
+| revocado_at | timestamp (nullable) | NULL = vigente. |
+| revocado_por_usuario_id | UUID / FK (nullable) | — |
+
+> **`edición` hace lo mismo que el dueño salvo administrar**: lee el historial completo, edita los datos no clínicos de la ficha, gestiona las citas y sube adjuntos, pero no invita, no revoca, no cambia niveles y no da de baja la mascota. `lectura` mira. La lista completa está en la matriz de la sección 5 y en Reglas de Negocio, 3.2.
+>
+> `consentimiento_at` es **obligatorio y se asienta al canjear la invitación**. Un co-tutor recibe datos de salud de un animal que no es suyo, y la Ley 25.326 exige rastro del otorgamiento: un acceso sin ese asiento no tendría con qué demostrarlo. No se revoca por la API, con el mismo criterio que el consentimiento del Tutor (4.1) — lo que corta el tratamiento es revocar el acceso, y borrar el asiento borraría la evidencia de que alguna vez se otorgó.
+>
+> **Un acceso nunca es el del propio dueño.** La base lo sostiene: la fila guarda además el `tutor_id` del dueño de esa mascota, para poder exigir que sea distinto del que recibe el acceso. Es redundante a propósito, porque una restricción de tabla no puede consultar otra tabla, y no puede quedar desincronizado porque `Paciente.tutor_id` es inmutable.
+
+### 4.15 Invitación de co-tutor
+
+Cómo se le da acceso a alguien que puede todavía no tener cuenta.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| id | UUID / PK | Identificador único. |
+| paciente_id | UUID / FK | La mascota que se comparte. |
+| invitado_por_usuario_id | UUID / FK | El dueño. |
+| email | string | A quién va dirigida. Normalizado en minúsculas. |
+| nivel | enum | Edición / lectura. |
+| token_hash | string | Hash del código. Nunca el código. |
+| expira_at | timestamp | — |
+| usado_at | timestamp (nullable) | Cuándo se canjeó. |
+| aceptado_por_usuario_id | UUID / FK (nullable) | Quién la canjeó. |
+| revocado_at | timestamp (nullable) | Anulada por el dueño antes de usarse. |
+
+> Es la misma forma que el token de activación (Reglas de Negocio, 4.16) y el de recuperación (4.4.1): un secreto de un solo uso, guardado hasheado, con vencimiento, que no se borra al usarse. Lo que cambia es que **no cuelga de un `usuario_id`** — el invitado puede no tener cuenta todavía, y ese es justamente el caso que esta entidad existe para resolver. La identidad del destinatario la lleva el email.
+>
+> **El canje exige que la cuenta que lo ejecuta tenga ese email.** Sin esa verificación, un enlace reenviado lo canjea cualquiera y la invitación deja de ser dirigida.
+>
+> Hay **una sola invitación pendiente por mascota y destinatario**: reinvitar al mismo correo anula la anterior, en vez de dejar dos enlaces vivos. Mismo criterio que la recuperación de contraseña.
+>
+> Vence a los **7 días**, mucho más que la activación y la recuperación, que se miden en horas. La diferencia es deliberada: esos dos son credenciales de una cuenta que ya existe y que su titular está mirando en ese preciso momento; este viaja entre dos personas, y quien lo recibe puede tener que crearse una cuenta antes de poder canjearlo.
+
 ## 5. Matriz de permisos
 
 | Entidad | Quién escribe | Quién lee |
 |---|---|---|
-| Evento clínico, Medicación | Solo veterinario, sobre los pacientes de su clínica: cualquiera del plantel edita y da de baja, no solo el autor (Reglas de Negocio, 3.2) | Veterinario (todo) + Tutor (solo lectura) |
-| Cita / Calendario | Veterinario crea; Tutor confirma/reagenda | Ambos |
-| Adjuntos | Ambos | Ambos |
+| Evento clínico, Medicación | Solo veterinario, sobre los pacientes vinculados a su clínica: cualquiera del plantel edita y da de baja, no solo el autor (Reglas de Negocio, 3.2) | Veterinario (todo) + el dueño y sus co-tutores, en cualquier nivel (solo lectura) |
+| Cita / Calendario | Veterinario crea, en su propia clínica; el dueño y el co-tutor con edición confirman y reagendan | Veterinario + el dueño y sus co-tutores |
+| Adjuntos | Veterinario + el dueño y el co-tutor con edición. Cada uno retira los que subió | Veterinario + el dueño y sus co-tutores |
 | Dispositivo | Cada usuario los suyos (los registra al entrar y los da de baja al salir) | Cada usuario los suyos |
 | Notificación | Nadie: las escribe el proceso que las encola y las despacha | Nadie por API en el MVP: llegan como push, no se listan |
-| Paciente (datos básicos) | Veterinario de su clínica (alta, edición, baja); Tutor edita solo el peso | Veterinario de la clínica + el tutor dueño. Clínica_admin sin acceso |
+| Paciente (datos básicos) | Alta: el dueño, o un veterinario a nombre de un tutor. Edición de los datos no clínicos: el dueño, el co-tutor con edición y el veterinario de una clínica vinculada. `identificador_externo` (chip): solo el veterinario. Baja: solo el dueño | Veterinario de una clínica vinculada + el dueño y sus co-tutores. Clínica_admin sin acceso |
+| Vínculo con clínica | Otorga y revoca: solo el dueño. Un veterinario puede desvincular su propia clínica | El dueño, sus co-tutores y los veterinarios de las clínicas vinculadas |
+| Acceso de co-tutor, Invitación | Solo el dueño. El co-tutor puede renunciar al suyo | El dueño y sus co-tutores (los co-tutores, sin acciones) |
 | Tutor (ficha) | Veterinario de una clínica vinculada a esa ficha (alta y edición, incluido completar documento y dirección); el propio tutor sobre la suya, salvo el consentimiento | Búsqueda: cualquier veterinario. Ficha concreta: veterinario vinculado + el propio tutor. Clínica_admin sin acceso |
+| Clínica (directorio) | Nadie por esta vía | Cualquier cuenta autenticada, con proyección reducida: es cómo el tutor elige con quién compartir |
 | Evento clínico, Medicación (acceso de clínica_admin) | Sin acceso | Sin acceso — reservado a veterinario y tutor |
 | Veterinario (ficha del plantel) | Clínica_admin, sobre el plantel de su propia clínica | Clínica_admin (edita) + Veterinario de la misma clínica (solo lectura). Tutor sin acceso |
 | Usuario (cuentas de veterinario) | Clínica_admin, sobre las cuentas de su propia clínica | Clínica_admin (las de su clínica) + el propio usuario sobre su cuenta |
@@ -388,6 +482,5 @@ Los siguientes campos no se utilizan activamente en el MVP pero se incluyen desd
 
 - **Paciente.identificador_externo** — permite localizar el historial vía chip/microchip sin depender del nombre de la clínica de origen.
 - **Veterinario.matrícula** — base para validación profesional automática (tipo KYC).
-- **Paciente.clínica_id** — modelado como FK simple en el MVP; migrará a tabla intermedia N:N cuando un paciente pueda ser atendido por más de una clínica.
 - **Evento clínico.campo_estructurado** — permite sumar campos de triaje estructurado sin romper el esquema existente.
 - **Tutor.dirección_lat / dirección_lng y Clínica.dirección_lat / dirección_lng** — el punto en el mapa sobre el que va a correr la búsqueda por cercanía. Se capturan desde el MVP porque geocodificar hacia atrás un padrón de direcciones escritas a mano años después es reconstruir el dato, no migrarlo.

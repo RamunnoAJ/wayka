@@ -64,8 +64,11 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Alta de paciente (con alta de tutor si no existe, según proceso 4.1 de Reglas de Negocio).
 - Búsqueda de tutores por documento, nombre o contacto; alta y edición de la ficha de un tutor, incluido completar documento y dirección — la dirección con el mismo autocompletado y mapa que usa el tutor en su ficha propia (5.8). El listado se pagina siempre: no está acotado a la propia clínica.
 - Baja lógica de una ficha de tutor.
-- Búsqueda y listado de pacientes de la propia clínica.
+- Búsqueda y listado de los pacientes vinculados a la propia clínica.
 - Ficha de paciente: datos básicos, historial de eventos clínicos, medicación activa e histórica.
+- **Quiénes son sus tutores**: el dueño y los co-tutores con acceso, con su contacto. Antes había uno solo y era implícito; ahora hay que saber a quién llamar.
+- **Qué otras clínicas la atienden**, solo el nombre. Es continuidad de cuidado —no repetir una vacuna que puso otra—, no una ventana a la cartera ajena.
+- **Dejar de atenderla**: revoca el vínculo de la propia clínica y la saca de la cartera, sin tocar el registro. Se rechaza si quedan citas pendientes. El veterinario **no da de baja la mascota**: eso es del dueño (Reglas de Negocio, 2.4).
 
 ### 3.4 Carga de evento clínico (rol: Veterinario)
 - Formulario por tipo de evento (consulta, vacuna, cirugía, control, urgencia).
@@ -79,7 +82,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 
 ### 3.6 Calendario / Citas (rol: Veterinario)
 - Creación de citas (vacuna, control, cirugía programada) con **fecha y hora**, sobre la grilla que definen el horario de atención y la duración del turno de la clínica (3.2). Las horas fuera de la grilla no se ofrecen: el backend las rechaza igual, pero ofrecerlas y después fallar es un error que la interfaz puede evitar.
-- Vista de citas pendientes y vencidas de la clínica, por día, semana y mes, con quién atiende cada una.
+- Vista de citas pendientes y vencidas de la clínica, por día, semana y mes, con quién atiende cada una. Son las citas agendadas **en esta clínica**: una mascota atendida también en otra tiene allá su propia agenda, que acá no se ve.
 - **Asignación de profesional**, opcional: una cita puede quedar de la clínica y repartirse después. Al asignar, no se ofrecen los profesionales que ya tienen otra cita en ese momento — el backend lo rechaza igual, pero ofrecerlo y después fallar es un error que la interfaz puede evitar.
 - Filtrar la agenda por profesional, incluyendo "sin asignar": es la lista de lo que todavía hay que repartir.
 
@@ -104,12 +107,16 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 - Queda operativo de inmediato: entra y ve sus secciones vacías hasta que una clínica le vincule Pacientes.
 
 ### 5.2 Mis mascotas
-- Listado de pacientes asociados al tutor autenticado. Vacío hasta que una clínica le vincule alguno: el tutor no da de alta Pacientes por su cuenta (el alta la inicia el veterinario y fija clínica_id — Reglas de Negocio, 4.1).
+- Listado de las mascotas del tutor autenticado: las suyas y las que otra persona le compartió, con una etiqueta que distingue unas de otras y con qué nivel.
+- **Alta de una mascota** (Reglas de Negocio, 4.17). No pide clínica: la mascota nace del tutor y se comparte después. La pantalla vacía ofrece cargar la primera, en vez de pedir que espere a que una clínica lo haga.
+- Las invitaciones pendientes aparecen arriba del listado, que es donde el tutor mira. No suman un ítem a la barra de pestañas — ya tiene cinco.
 
-### 5.3 Ficha de paciente (solo lectura)
-- Historial de eventos clínicos: fecha, tipo, descripción, diagnóstico.
+### 5.3 Ficha de paciente
+- Historial de eventos clínicos: fecha, tipo, descripción, diagnóstico, y **quién lo escribió** — el profesional y su clínica, que con una mascota compartida ya no son siempre los mismos.
 - Medicación activa e histórica.
-- Sin permisos de edición sobre ningún dato clínico (regla de la matriz de permisos).
+- Qué clínicas la atienden hoy.
+- **Sin permisos de edición sobre ningún dato clínico**, en ningún nivel (regla de la matriz de permisos). Lo que sí se edita son los datos de la mascota, y depende del nivel (5.7).
+- Para el dueño, la entrada a "Quién la ve" (5.10).
 
 ### 5.4 Calendario
 - Vista de citas pendientes con su fecha **y hora**, y con quién la va a atender si ya está asignada.
@@ -135,7 +142,8 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
   - Con **movimiento reducido** activado, el visor abre sin animación y la imagen queda fija: el acercamiento continuo bajo el dedo es justo lo que ese ajuste pide evitar.
 
 ### 5.7 Datos básicos del paciente
-- Edición de campos no clínicos: peso actual.
+- Edición de los campos no clínicos: nombre, especie, raza, fecha de nacimiento, sexo y peso actual. La hace el dueño y el co-tutor con nivel de edición; el de lectura los ve y no los toca.
+- El **número de chip no se edita desde acá**: lo carga el veterinario, que es quien lo implanta y lo lee (Reglas de Negocio, 3.2).
 
 ### 5.8 Mis datos (ficha propia del tutor)
 - Lectura y edición de la ficha propia: nombre, contacto, dirección y documento.
@@ -143,6 +151,27 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 - Cambio de la contraseña de la propia cuenta, en su propia sección.
 - El consentimiento de uso de datos no se edita desde acá: se otorga en el registro y no se revoca por la aplicación.
 - El tutor no ve ni busca fichas de otros tutores, y no puede dar de baja la suya.
+
+### 5.9 Compartir una mascota
+Solo el dueño. Dos caminos en la misma pantalla:
+
+- **Con una veterinaria**: se busca por nombre en el directorio y se elige de una lista que muestra la dirección, para no confundir dos sucursales. Antes de confirmar, la pantalla dice que la clínica va a ver **el historial completo**, incluido lo que escribieron otras — no solo lo que escriba de ahí en adelante.
+- **Con otra persona**: se ingresa su correo y se elige el nivel. Cada opción explica en una línea qué habilita, abajo de su nombre y no en un globo de ayuda: la diferencia entre "puede editar" y "solo mirar" es la decisión entera de esta pantalla.
+
+Quien recibe la invitación no necesita tener cuenta: el correo trae un enlace, y si hace falta se registra antes de aceptar.
+
+- **Necesita conexión.** Compartir es una decisión de seguridad y no entra a la cola de cambios sin conexión: encolarla sería compartir en diferido. Sin señal, la pantalla lo dice y no ofrece el botón.
+
+### 5.10 Quién la ve
+- Tres bloques: el dueño, las personas con acceso y las veterinarias vinculadas.
+- El dueño revoca cualquiera y cambia el nivel de un co-tutor. Un co-tutor ve la misma lista sin acciones —saber quién más está mirando el historial no es administrar— y puede renunciar al suyo.
+- Al revocar, el diálogo **dice la verdad sobre el efecto**: en el servidor es inmediato, pero un teléfono sin señal puede seguir mostrando lo que ya descargó hasta que se conecte (Sincronización sin Conexión, 8). Prometer un corte instantáneo sería mentir sobre algo que el sistema no controla.
+- También necesita conexión, por el mismo motivo que 5.9.
+
+### 5.11 Invitaciones recibidas
+- Las que están pendientes, con qué mascota es, quién invita y con qué nivel. **Nada del historial**: aceptar es justamente lo que da acceso a él.
+- Se llega desde el enlace del correo o desde el aviso arriba de Mis mascotas. Si el enlace se abre sin sesión, la pantalla de ingreso vuelve a la invitación después de entrar o de registrarse.
+- Aceptar o rechazar. Aceptar deja la mascota en el listado con su etiqueta de nivel.
 
 ## 6. Fuera de alcance de este documento
 

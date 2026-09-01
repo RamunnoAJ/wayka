@@ -36,17 +36,17 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Paciente vigente para cargar | Evento clínico | No se crean Eventos clínicos sobre un Paciente con `deleted_at`. El historial existente sigue consultable y editable (regla 4.5), pero no se le agregan episodios nuevos. |
 | Campo estructurado según el tipo | Evento clínico | `campo_estructurado` se valida contra el esquema fijo del `tipo` del evento (Modelo de Datos, 4.5): obligatorio y con forma exigida para vacuna, medicación y alergia, y NULL para consulta, cirugía, control y urgencia. Un JSON con claves ajenas al esquema, con faltantes, o presente en un tipo que no lo admite, se rechaza. |
 | Una medicación activa por droga | Medicación | No se permite crear una nueva Medicación con fecha_fin NULL para una droga que el paciente ya tiene activa. Debe cerrarse la anterior (fecha_fin) antes de abrir una nueva. |
-| Paciente fijo a una clínica | Paciente | clínica_id no es editable una vez creado el paciente en el MVP. Reasignar de clínica está fuera de alcance hasta Fase 2. |
 | Zona horaria válida | Clínica | zona_horaria tiene que ser un nombre IANA que el sistema pueda resolver. Una zona que no existe deja el horario de atención sin significado: "abre 09:00" no dice nada si no se sabe 09:00 de dónde. |
 | Horario de atención coherente | Clínica | hora_cierre tiene que ser posterior a hora_apertura. No se admite un horario que cruce la medianoche: una guardia nocturna es un caso que el MVP no modela, y aceptarlo acá lo haría parecer soportado. |
 | Turno que divide el horario | Clínica | duración_turno_minutos tiene que ser mayor a cero y dividir de forma exacta el intervalo entre apertura y cierre. Si no divide, el último turno del día queda cortado por el cierre y la grilla miente sobre cuántos turnos entran. |
 | Horario que no invalida lo agendado | Clínica | Achicar el horario de atención o cambiar la duración del turno **no reagenda ni cancela** las Citas pendientes que quedan fuera del horario nuevo. Se rechaza el cambio mientras existan: mover la agenda de una mascota es una decisión clínica, no un efecto colateral de editar la configuración de la clínica. |
 | Consentimiento previo a alta de paciente | Tutor, Paciente | No se puede dar de alta un Paciente si el Tutor asociado no tiene consentimiento_datos = true. |
 | Momento no pasado | Cita | fecha_programada no puede ser anterior al momento actual, ni al crear ni al reagendar. Es la regla espejo del Evento clínico: lo que ya ocurrió se registra como evento, lo que va a ocurrir se agenda como cita. Una cita creada en el pasado nacería vencida. Ahora que `fecha_programada` lleva hora, la comparación es contra el instante y no contra el día: agendar hoy a las 09:00 cuando son las 15:00 se rechaza. |
-| Dentro del horario de atención | Cita | fecha_programada, leída en la `zona_horaria` de la clínica del paciente, tiene que caer entre `hora_apertura` y `hora_cierre`, y el turno completo (`duración_turno_minutos`) tiene que terminar antes del cierre. Una cita fuera del horario no la puede atender nadie. |
+| Dentro del horario de atención | Cita | fecha_programada, leída en la `zona_horaria` de **la clínica de la cita**, tiene que caer entre `hora_apertura` y `hora_cierre`, y el turno completo (`duración_turno_minutos`) tiene que terminar antes del cierre. Una cita fuera del horario no la puede atender nadie. |
 | Un profesional no se duplica | Cita | Un mismo veterinario no puede tener dos Citas **pendientes** en el mismo momento. Es la regla que hace que asignar profesional signifique algo: sin ella la asignación es una etiqueta y la agenda vuelve a mentir sobre quién está libre. Las citas sin asignar no colisionan entre sí — sin profesional no hay a quién solapar. Una cita cumplida o vencida tampoco bloquea: ya pasó. |
-| El profesional atiende en esa clínica | Cita | `veterinario_id`, si viene, tiene que ser de un veterinario vigente de la clínica del paciente. Asignarle una cita a alguien de otra clínica sería agendarle trabajo a quien no atiende ahí. |
-| Alineada a la grilla de turnos | Cita | La hora de fecha_programada tiene que ser múltiplo de `duración_turno_minutos` contado desde `hora_apertura`. Con turnos de 30 min y apertura a las 09:00, valen 09:00, 09:30, 10:00…; 09:17 se rechaza. Sin esta regla los turnos se solapan de a poco y la grilla del calendario deja de representar la agenda real. |
+| El profesional atiende en esa clínica | Cita | `veterinario_id`, si viene, tiene que ser de un veterinario vigente de **la clínica de la cita**. Asignarle una cita a alguien de otra clínica sería agendarle trabajo a quien no atiende ahí. |
+| Cita en una clínica vinculada | Cita | La clínica de la cita tiene que tener vínculo vigente con el paciente al momento de agendar (Modelo de Datos, 4.13). Se resuelve contra el actor, no se recibe por la API: una cita nace en la clínica del veterinario que la agenda. Una mascota que el tutor todavía no compartió con nadie no admite citas, y el rechazo lo dice así — no es una falta de permiso, es que no hay agenda donde ponerla. |
+| Alineada a la grilla de turnos | Cita | La hora de fecha_programada tiene que ser múltiplo del `duración_turno_minutos` de **la clínica de la cita**, contado desde su `hora_apertura`. Con turnos de 30 min y apertura a las 09:00, valen 09:00, 09:30, 10:00…; 09:17 se rechaza. Sin esta regla los turnos se solapan de a poco y la grilla del calendario deja de representar la agenda real. |
 | Paciente vigente para agendar | Cita | No se agendan Citas nuevas sobre un Paciente con `deleted_at`. Las ya programadas siguen consultables (regla 4.5). |
 | Estado no editable | Cita | `estado` no se recibe por la API en ninguna operación: lo mueve el sistema (Modelo de Datos, 4.7). |
 | Un dispositivo pertenece a una sola cuenta | Dispositivo | Un token de push identifica un teléfono, no una persona. Registrar un token ya asociado a otra cuenta lo reasigna a la que lo registra: es el mismo teléfono donde ahora entró otro usuario, y seguir mandándole las notificaciones del anterior sería filtrarle datos de otra mascota. |
@@ -57,6 +57,12 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Paciente vigente para adjuntar | Adjuntos | No se suben archivos nuevos a un Paciente con `deleted_at`. Los ya subidos siguen consultables (regla 4.5). |
 | Evento del mismo paciente | Adjuntos | Si el adjunto declara `evento_id`, ese evento tiene que pertenecer al mismo Paciente. |
 | Solo se reagenda lo pendiente | Cita | Una Cita en estado `cumplido` o `vencido` no admite cambio de fecha_programada ni de tipo: reagendar es mover algo que todavía va a pasar. Lo que se hace con una cita vencida es agendar una nueva. |
+| La clínica de la cita no se muda | Cita | `clinica_id` no es editable. Mudar una cita de clínica le cambia la grilla, el huso horario y la validez del profesional asignado, los tres a la vez: eso no es editar una cita, es dar de baja una y agendar otra. |
+| Una clínica no se vincula dos veces | Vínculo con clínica | No se crea un vínculo con una clínica que ya tiene uno vigente sobre ese paciente. Revocar y volver a compartir sí se permite, y deja las dos filas: la unicidad es entre los vínculos vigentes, no sobre el historial. |
+| Un co-tutor no es el dueño | Acceso de co-tutor | No se otorga acceso al tutor que ya es dueño de esa mascota: ya lo alcanza todo, y la fila lo dejaría con dos títulos distintos sobre el mismo animal. |
+| Un acceso por persona y mascota | Acceso de co-tutor | No se otorgan dos accesos vigentes al mismo tutor sobre la misma mascota. Cambiar de nivel es editar el que existe, no agregar otro. |
+| Consentimiento previo al acceso | Acceso de co-tutor | No se crea un acceso si quien lo recibe no tiene `consentimiento_datos = true`. Es la regla espejo de la del alta de paciente: recibir el historial de una mascota ajena es recibir dato de salud. |
+| Solo se comparte una mascota vigente | Vínculo con clínica, Acceso de co-tutor, Invitación | No se comparte, invita ni revoca sobre un Paciente con `deleted_at` (regla 4.5). |
 
 ### 2.3 Bloqueo de canal
 
@@ -76,12 +82,20 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Regla | Aplica a | Validación |
 |---|---|---|
 | Nunca borrado físico | Todas las entidades clínicas | Ninguna operación de la aplicación ejecuta DELETE físico sobre Evento clínico, Medicación, Cita, Adjuntos o Paciente. Toda baja es lógica (deleted_at). |
-| Quién puede borrar (lógicamente) | Evento clínico, Medicación | Solo el veterinario autor del registro, o un veterinario de la misma clínica con rol habilitado. El tutor nunca puede borrar datos clínicos. |
+| Quién puede borrar (lógicamente) | Evento clínico, Medicación | Solo el veterinario autor del registro, o un veterinario de la misma clínica con rol habilitado, mientras esa clínica tenga vínculo vigente con el paciente. Ningún tutor borra datos clínicos, sea dueño o co-tutor. |
 | Quién puede borrar (lógicamente) | Adjuntos | Cada rol retira los adjuntos que subió: el veterinario los suyos, el tutor los suyos. Un tutor no borra el estudio que cargó la clínica, ni la clínica la ficha histórica que subió el tutor. La baja es lógica y **no borra el objeto del bucket**: "nunca borrado físico" alcanza también al archivo. |
-| Quién puede borrar (lógicamente) | Cita | Un veterinario de la clínica del paciente, o el tutor de la mascota. Es la excepción a "el tutor nunca borra datos clínicos": la Cita es agenda, no historial — el tutor que sabe que no va a llevar a su mascota es quien mejor puede retirarla del calendario, y la baja no destruye nada que se haya registrado sobre la atención. |
+| Quién puede borrar (lógicamente) | Cita | Un veterinario de la clínica de la cita, el dueño de la mascota o un co-tutor con nivel de edición. Es la excepción a "el tutor nunca borra datos clínicos": la Cita es agenda, no historial — el tutor que sabe que no va a llevar a su mascota es quien mejor puede retirarla del calendario, y la baja no destruye nada que se haya registrado sobre la atención. |
 | Quién puede borrar (lógicamente) | Tutor | Solo un veterinario de una clínica vinculada a esa ficha. La baja marca deleted_at y no cascadea sobre la cuenta de Usuario del tutor. **Se rechaza mientras la ficha tenga Pacientes vigentes**: dar de baja al tutor dejaría mascotas activas sin nadie a quien contactar. La clínica tiene que resolver primero qué pasa con ellas. |
-| Quién puede borrar (lógicamente) | Paciente | Solo un veterinario de la clínica del paciente. El tutor nunca da de baja una mascota: el alta la inicia la clínica y la baja también. No cascadea sobre Eventos clínicos, Medicación, Citas ni Adjuntos (regla 4.5). |
+| Quién puede borrar (lógicamente) | Paciente | **Solo el dueño.** Ni un co-tutor, ni siquiera con nivel de edición, ni un veterinario. No cascadea sobre Eventos clínicos, Medicación, Citas ni Adjuntos (regla 4.5). |
+| Quién puede revocar | Vínculo con clínica | El dueño de la mascota, sobre cualquier clínica. Un veterinario, solo sobre su propia clínica — es cómo la saca de su cartera. **Se rechaza mientras esa clínica tenga Citas pendientes de esa mascota**, informando cuántas. |
+| Quién puede revocar | Acceso de co-tutor | El dueño, sobre cualquier acceso que otorgó. El propio co-tutor, sobre el suyo — renunciar a ver una mascota ajena no necesita permiso de nadie. |
 | Quién puede borrar (lógicamente) | Veterinario | Solo el clínica_admin de su misma clínica. La baja marca deleted_at sobre la ficha **y desactiva su cuenta de acceso en la misma transacción**: separarlas dejaría a un ex empleado con acceso cada vez que alguien olvidara el segundo paso. No cascadea sobre lo que ese veterinario escribió — los Eventos clínicos y las Medicaciones conservan su autoría. |
+
+> **Que la baja del Paciente haya pasado del veterinario al dueño** es el cambio de comportamiento más grande de esta versión, y no es un ajuste de permisos: es la consecuencia de que la mascota deje de pertenecer a una clínica. Con una mascota atendida por tres, dejar que cualquiera de ellas la dé de baja es dejar que una borre el registro de las otras dos. Lo que el veterinario tiene en su lugar es **revocar el vínculo de su clínica**, que es lo que en realidad quería hacer cuando daba de baja una ficha que dejó de atender, y que hasta ahora no tenía cómo expresar.
+>
+> **Revocar un vínculo o un acceso no borra nada.** Los Eventos clínicos, la Medicación y los Adjuntos que esa clínica o esa persona escribieron quedan donde están, con su autoría intacta: quién escribió qué no depende de quién puede leerlo hoy. Lo que se pierde es el acceso de ahí en adelante.
+>
+> **Revocar con citas pendientes se rechaza**, con el mismo criterio con el que achicar el horario de atención se rechaza mientras haya citas fuera del nuevo (regla 2.2) y con el que no se da de baja un tutor con pacientes vigentes. Vaciar la agenda de una clínica como efecto colateral de que alguien tocó un botón en su teléfono sería una baja silenciosa: primero se resuelve qué pasa con esos turnos.
 
 > Toda regla de esta sección que se viole debe rechazar la operación antes de escribir en base — no como validación posterior ni advertencia silenciosa.
 
@@ -132,15 +146,15 @@ El segundo nivel es el que evita que, por ejemplo, un veterinario habilitado par
 
 | Rol | Regla de alcance |
 |---|---|
-| Veterinario | Solo accede a Pacientes cuyo clínica_id coincide con la clínica_id del propio Veterinario. |
-| Tutor | Solo accede a Pacientes cuyo tutor_id coincide con el tutor_id asociado a su Usuario. |
+| Veterinario | Solo accede a Pacientes que tienen un **vínculo vigente** con su clínica (Modelo de Datos, 4.13). Cualquiera del plantel los alcanza: el vínculo es con la clínica, no con la persona. |
+| Tutor | Solo accede a Pacientes de los que es **dueño** (`Paciente.tutor_id`) o sobre los que tiene un **acceso de co-tutor vigente** (4.14). Qué puede hacer sobre ellos lo decide el nivel de ese vínculo. |
 | Clínica_admin | Solo accede a datos administrativos (Veterinarios, Clínica) cuya clínica_id coincide con la propia. Sin acceso a Evento clínico ni Medicación de ningún paciente (ver Modelo de Datos, sección 5). |
 
 Sobre la ficha de Tutor (distinta de la cuenta de Usuario del tutor), el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Tutor |
 |---|---|
-| Veterinario | **Busca** sin acotar (ver nota abajo). Para **leer, editar o dar de baja** una ficha concreta necesita un vínculo con su clínica: que el tutor tenga al menos un Paciente vigente ahí, o que la ficha la haya creado esa misma clínica (`clínica_de_origen_id`). |
+| Veterinario | **Busca** sin acotar (ver nota abajo). Para **leer, editar o dar de baja** una ficha concreta necesita un vínculo con su clínica: que el tutor sea dueño o co-tutor vigente de al menos un Paciente vinculado a esa clínica, o que la ficha la haya creado esa misma clínica (`clínica_de_origen_id`). |
 | Tutor | Solo alcanza su propia ficha, vía el tutor_id de su Usuario: puede leerla y editar nombre, contacto, dirección y documento. No puede darla de baja — la baja la decide la clínica, que es quien tiene Pacientes vinculados a ella — ni revocar su consentimiento por esta vía. |
 | Clínica_admin | Sin acceso a fichas de Tutor: su rol alcanza datos administrativos (Veterinarios y Clínica), no las personas atendidas. |
 
@@ -148,16 +162,29 @@ Sobre el Paciente, el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Paciente |
 |---|---|
-| Veterinario | La cartera de su propia clínica: da de alta, lista, lee, edita cualquier dato básico y da de baja. La clínica del paciente queda fija desde el alta (regla 2.2). |
-| Tutor | Solo sus propias mascotas, estén atendidas en la clínica que sea. Lee y edita **únicamente el peso** — el dato no clínico que puede medir en su casa. No da de alta ni de baja. |
+| Veterinario | La cartera de su propia clínica —las mascotas con vínculo vigente—: da de alta a nombre de un tutor, lista, lee, edita los datos básicos y el chip. **No da de baja la mascota**: lo que puede hacer es revocar el vínculo de su clínica (regla 2.4). |
+| Tutor **dueño** | Sus mascotas, estén atendidas por las clínicas que sea o por ninguna. Da de alta, lee, edita todos los datos no clínicos, gestiona las citas y los adjuntos, da de baja, y **administra los accesos**: comparte con clínicas, invita co-tutores, les cambia el nivel y los revoca. |
+| Tutor **co-tutor con edición** | Todo lo del dueño **salvo administrar**: no invita, no revoca, no cambia niveles y no da de baja la mascota. Sí lee el historial completo, edita los datos no clínicos, reagenda y retira citas, y sube adjuntos. |
+| Tutor **co-tutor con lectura** | Mira. El historial, la medicación, las citas y los adjuntos de esa mascota, sin escribir nada — ni el peso. |
 | Clínica_admin | Sin acceso: su rol alcanza datos administrativos, no las mascotas atendidas ni su historial (Modelo de Datos, sección 5). |
+
+Sobre los datos de la ficha, la línea no la marca el rol sino qué dato es:
+
+| Dato | Quién lo edita |
+|---|---|
+| nombre, especie, raza, fecha_nacimiento, sexo, peso_actual | El dueño, el co-tutor con edición y el veterinario de una clínica vinculada |
+| identificador_externo (chip) | **Solo el veterinario** |
+
+> Que el tutor edite los datos básicos y no solo el peso es consecuencia directa de que ahora da de alta la mascota: quien carga una ficha tiene que poder corregirle el nombre. Son datos del animal, no del acto médico, y no dejan de serlo porque la mascota entre a una clínica.
+>
+> El **chip** es la excepción, y no por desconfianza: lo implanta y lo lee el veterinario, es único entre fichas vigentes (Modelo de Datos, 4.2), y dejarlo abierto habilitaría que alguien ocupe el número de otro animal desde su teléfono.
 
 Sobre los Adjuntos, el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Adjuntos |
 |---|---|
-| Veterinario | Los archivos de los pacientes de su clínica: sube, lista, descarga y retira los que subió él. |
-| Tutor | Los archivos de sus propias mascotas: sube, lista, descarga y retira los que subió él. |
+| Veterinario | Los archivos de los pacientes vinculados a su clínica: sube, lista, descarga y retira los que subió él. |
+| Tutor | Los archivos de las mascotas que alcanza. El dueño y el co-tutor con edición suben y retiran los que subieron; el co-tutor con lectura solo lista y mira. |
 | Clínica_admin | Sin acceso: los adjuntos cuelgan del Paciente, y su rol no alcanza las mascotas atendidas. |
 
 > Un Adjunto no se edita. Corregir una carga errónea es retirarla y subir otra: la alternativa sería permitir reemplazar el archivo debajo de un registro que ya se referenció desde un evento clínico.
@@ -166,8 +193,8 @@ Sobre la Cita, el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Cita |
 |---|---|
-| Veterinario | El calendario de los pacientes de su clínica: agenda, lista, lee, reagenda, asigna profesional y da de baja. **La asignación no acota el alcance**: un veterinario alcanza las citas de los pacientes de su clínica le toquen a él o a un colega. Que le asignen una cita es organización del trabajo, no un permiso. |
-| Tutor | Solo las citas de sus propias mascotas. Lee, reagenda (fecha_programada) y decide si quiere que le avisen (notificar_tutor), y puede darlas de baja. No agenda citas nuevas, no cambia el tipo ni asigna profesional: qué control corresponde y quién lo hace son criterio de la clínica. |
+| Veterinario | El calendario de los pacientes vinculados a su clínica: agenda —siempre en su propia clínica—, lista, lee, reagenda, asigna profesional y da de baja. **La asignación no acota el alcance**: un veterinario alcanza esas citas le toquen a él o a un colega. Que le asignen una cita es organización del trabajo, no un permiso. |
+| Tutor | Las citas de las mascotas que alcanza. El dueño y el co-tutor con edición leen, reagendan (fecha_programada), deciden si quieren que les avisen (notificar_tutor) y pueden darlas de baja; el co-tutor con lectura solo lee. Ningún tutor agenda citas nuevas, cambia el tipo ni asigna profesional: qué control corresponde y quién lo hace son criterio de la clínica. |
 | Clínica_admin | Sin acceso: el calendario cuelga del Paciente, y su rol no alcanza las mascotas atendidas. |
 
 > El listado de pacientes es un endpoint con dos alcances: cuál aplica lo decide el rol del token, nunca un parámetro del cliente. El veterinario ve la cartera de su clínica; el tutor, sus mascotas.
@@ -180,7 +207,7 @@ Sobre la Clínica, el alcance se resuelve así:
 |---|---|
 | Clínica_admin | Su propia clínica, la de su `clínica_id`: la lee y edita sus datos administrativos (nombre, dirección, contacto) y su horario de atención. **No la da de alta ni de baja** — eso es del administrador de la plataforma, fuera de la API (proceso 4.10). |
 | Veterinario | Solo lectura de la clínica a la que pertenece, vía su `clínica_de_pertenencia_id`. La necesita para agendar: sin el horario de atención y la duración del turno no puede saber qué horas son válidas (regla 2.2). No la edita. |
-| Tutor | Sin acceso. Su relación es con la mascota y con quien la atiende, no con la entidad administrativa. |
+| Tutor | **Lee el directorio**: nombre, dirección y contacto de cualquier clínica, para poder elegir con cuál compartir su mascota. No lee su horario de atención ni su plantel, y no edita nada. |
 
 > Que el clínica_admin **edite** su propia clínica no estaba en la primera versión de este documento: la matriz del Modelo de Datos la daba como escritura exclusiva del administrador de la plataforma, mientras que Alcance de Plataformas 3.2 pedía la pantalla de edición desde la web. Era una contradicción entre dos documentos del mismo contrato. Se resolvió a favor de Alcance de Plataformas: el alta sigue siendo del administrador de la plataforma, la edición pasa a ser del clínica_admin. Que una clínica corrija su propio teléfono no puede depender de abrirle un ticket a Wayka.
 
@@ -206,9 +233,11 @@ Sobre el Evento clínico, el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Evento clínico |
 |---|---|
-| Veterinario | Sobre los Pacientes de su propia clínica: carga, lista, lee, **edita y da de baja cualquier evento de esos pacientes, sea suyo o de un colega**. `veterinario_id` registra al autor original y no cambia nunca, ni siquiera al editarlo. |
-| Tutor | Solo lectura, y solo sobre los eventos de sus propias mascotas. Nunca escribe ni da de baja datos clínicos (regla 2.4). |
+| Veterinario | Sobre los Pacientes vinculados a su propia clínica: carga, lista, lee, **edita y da de baja cualquier evento de esos pacientes, sea suyo o de un colega**. `veterinario_id` registra al autor original y no cambia nunca, ni siquiera al editarlo. |
+| Tutor | Solo lectura, sobre las mascotas que alcanza — el dueño y los co-tutores de cualquier nivel leen igual. Ningún tutor escribe ni da de baja datos clínicos (regla 2.4). |
 | Clínica_admin | Sin acceso, ni de lectura ni de escritura (Modelo de Datos, sección 5). |
+
+> **El historial ahora tiene autores de otras clínicas.** Una mascota compartida acumula eventos escritos por profesionales que el veterinario que la está leyendo no alcanza —el plantel solo se lee dentro de la propia clínica—, así que la lectura de un Evento clínico devuelve el **nombre del autor y el de su clínica** resueltos por el backend. No es un aflojamiento del alcance sobre la ficha de Veterinario: es el mínimo sin el cual la trazabilidad se vuelve un identificador que nadie puede resolver.
 
 > Que un veterinario pueda editar el evento de un colega es el mismo criterio que la regla 2.4 ya fija para el borrado lógico ("el autor, o un veterinario de la misma clínica"). La alternativa era reservar la edición al autor, pero deja dos criterios distintos sobre la misma entidad: un colega podría borrar el registro entero y no corregirle una fecha. La trazabilidad no se pierde: `veterinario_id` conserva la autoría y la Auditoría registra quién editó qué y cuándo.
 
@@ -219,6 +248,23 @@ Sobre la entidad Usuario, el alcance se resuelve así:
 | Clínica_admin | Alcanza las cuentas cuya clínica_de_pertenencia_id coincide con la propia. No alcanza cuentas de tutor (no tienen pertenencia) ni cuentas de otra clínica. No puede darse de baja a sí mismo: dejaría a la clínica sin ninguna cuenta capaz de administrar usuarios. |
 | Veterinario, Tutor | Solo alcanzan su propia cuenta: pueden leerla, cambiar su email y su contraseña. |
 | Cualquier rol | El campo `activo` solo lo modifica un clínica_admin dentro de su alcance. Permitir que el propio usuario lo cambie vaciaría de sentido la suspensión. |
+
+Sobre los vínculos —con quién se comparte una mascota—, el alcance se resuelve así:
+
+| Rol | Regla de alcance sobre Vínculo con clínica, Acceso de co-tutor e Invitación |
+|---|---|
+| Tutor **dueño** | Administra: comparte con una clínica, invita a un co-tutor, le cambia el nivel, revoca cualquiera de los dos y anula una invitación que todavía no se canjeó. |
+| Tutor **co-tutor** | Lee la lista completa de quién más ve la mascota, en cualquier nivel, y **sin acciones**: no comparte, no invita y no revoca. Lo único que puede hacer es **renunciar a su propio acceso**. |
+| Veterinario | Lee los vínculos de los pacientes que alcanza —a qué tutores contactar y qué otras clínicas la atienden— y puede **revocar el vínculo de su propia clínica**. No comparte una mascota ajena con nadie. |
+| Clínica_admin | Sin acceso. |
+
+> Que un co-tutor **vea la lista y no pueda tocarla** es deliberado. Saber quién más está mirando el historial de un animal no es una capacidad administrativa: es lo mínimo para entender con quién se está compartiendo. Ocultárselo dejaría a alguien leyendo datos de salud sin saber quién más los lee.
+>
+> El **dueño no se revoca a sí mismo** ni renuncia a su propia mascota: no hay adónde iría el título. Lo que existe para dejar de tenerla es la baja (regla 2.4), y la transferencia de propiedad sigue fuera de alcance (Modelo de Datos, 4.2).
+
+> **Cómo obtiene el motor estos vínculos.** El token de acceso transporta el rol y los identificadores de la cuenta, pero no puede transportar con qué mascotas hay vínculo: eso cambia sin que la sesión cambie. El servicio los resuelve **antes** de autorizar y se los pasa al motor como un hecho ya calculado — es el mismo patrón que ya se usaba para saber si una clínica atiende a un tutor, y la razón por la que la evaluación de permisos sigue sin consultar la base por su cuenta.
+>
+> La regla que sostiene el patrón: **la consulta devuelve hechos, no permisos.** Lo que viaja hacia el motor es "el nivel de este tutor sobre esta mascota" y "esta clínica la atiende"; nunca "puede editar". La decisión sigue viviendo en un solo lugar, y una consulta mal escrita no puede otorgar un permiso que la tabla de permisos no otorga.
 
 ### 3.3 Dónde se aplica
 
@@ -236,8 +282,12 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 2. El Veterinario busca la ficha del Tutor antes de crearla: por el par (tipo_documento, número_documento) si lo conoce, o por coincidencia parcial de nombre o contacto. Buscar por contacto es lo que permite encontrar la ficha de un tutor que ya se auto-registró, porque esa ficha se crea sin documento (4.9) y su contacto es el email del registro.
 3. Si el Tutor no existe en el sistema, se crea primero — valida número_documento único (regla 2.1) y exige consentimiento_datos = true. La ficha queda con `clínica_de_origen_id` = la clínica del veterinario, que es lo que la pone a su alcance antes de que exista el Paciente.
 4. Se valida consentimiento_datos = true del Tutor (regla 2.2). Si no existe, se solicita antes de continuar.
-5. Se crea el Paciente con clínica_id = clínica del Veterinario que realiza el alta. Este valor queda fijo (regla 2.2).
-6. Se registra la creación en Auditoría automáticamente (entidad_tipo = "Paciente", acción = "creación").
+5. Se crea el Paciente con `tutor_id` = el Tutor buscado o creado, que queda como **dueño**, y en la misma transacción el **vínculo con la clínica** del veterinario que realiza el alta (`origen = alta_de_la_clínica`).
+6. Se registra la creación en Auditoría automáticamente (entidad_tipo = "Paciente", acción = "creación"), y también el vínculo.
+
+> El vínculo se crea en la misma transacción que la ficha, y no como un segundo paso: un Paciente que existe pero que ninguna clínica alcanza es una mascota que el veterinario acaba de cargar y no puede ver.
+>
+> **Este ya no es el único camino de alta.** El tutor da de alta su propia mascota desde la aplicación (4.17), sin ninguna clínica involucrada, y decide después con quién compartirla. La consecuencia práctica es la deduplicación: si el tutor ya la cargó y no la compartió, el veterinario no la ve y va a darla de alta de nuevo. Cuando el número de chip coincide con una ficha que el veterinario no alcanza, el alta se rechaza sugiriendo pedirle al tutor que la comparta — sin revelar nada de esa ficha.
 
 > Si el Tutor se había auto-registrado (4.9), su ficha no tiene clínica de origen y por lo tanto no está al alcance del veterinario hasta este punto: primero se crea el Paciente y recién después se completan documento y dirección de la ficha.
 
@@ -269,7 +319,7 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 
 ### 4.4 Ciclo de vida de una cita
 
-1. Creación: el Veterinario programa una Cita con fecha y hora, en estado = "pendiente". La hora tiene que caer dentro del horario de atención de la clínica del paciente y sobre su grilla de turnos (regla 2.2). Puede asignarle un profesional o dejarla de la clínica para repartirla después.
+1. Creación: el Veterinario programa una Cita con fecha y hora, en estado = "pendiente", **en su propia clínica**, que tiene que tener vínculo vigente con el paciente. La hora tiene que caer dentro del horario de atención de esa clínica y sobre su grilla de turnos (regla 2.2). Puede asignarle un profesional o dejarla de la clínica para repartirla después.
 2. Asignación o reasignación: el Veterinario asigna, cambia o quita el profesional mientras la cita siga pendiente. Se valida que no le quede otra cita en el mismo momento (regla 2.2). Sacar la asignación es dejarla de nuevo de la clínica, no darla de baja.
 3. Confirmación o reagenda: el Tutor puede modificar fecha_programada y notificar_tutor dentro de los permisos definidos (sección 3.2), pero no puede cambiar estado directamente. Solo se reagenda una cita pendiente (regla 2.2).
 4. Transición a "cumplido": ocurre cuando el Veterinario carga un Evento clínico con `cita_id` apuntando a esa Cita (Modelo de Datos, 4.5). Se valida que la Cita sea del mismo Paciente que el evento y que no esté ya cumplida. Una Cita **vencida** también pasa a cumplido por esta vía: la mascota llegó tarde y se la atendió igual, y dejarla vencida para siempre falsearía el historial.
@@ -299,6 +349,7 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 | Listarla entre los pacientes de la clínica o del tutor | No aparece: los listados filtran por `deleted_at IS NULL`. |
 | Leer su historial, medicación, citas y adjuntos | Se consultan normalmente. |
 | Editar la ficha, o darla de baja otra vez | Se rechaza. |
+| Compartirla, invitar a un co-tutor o revocar un acceso | Se rechaza. |
 | Cargar Eventos clínicos, Medicación, Citas o Adjuntos nuevos | Se rechaza (reglas 2.2). |
 | Editar o dar de baja los registros ya existentes | Se permite: corregir un diagnóstico mal cargado no depende de que la mascota siga en la cartera. |
 
@@ -413,6 +464,44 @@ El calendario existe para que la mascota llegue a su control; el recordatorio es
 > El canje no emite sesión a propósito. Emitirla ahorraría un paso, pero convertiría este endpoint en una vía de autenticación paralela al login, con su propio bloqueo de canal que mantener sincronizado. Un formulario de login extra es más barato que dos caminos hacia una sesión.
 >
 > **Pendiente**: qué pasa si el token se vence o se pierde antes de usarse. Hoy la salida es que el administrador de la plataforma emita otro por línea de comandos, lo cual funciona pero no está definido como proceso ni deja rastro de cuántas veces se reemitió.
+
+### 4.17 Alta de una mascota por el tutor
+
+1. El tutor autenticado carga nombre, especie, raza, fecha de nacimiento, sexo y peso. **No elige clínica**: el formulario no la ofrece, porque en este camino no hay ninguna.
+2. Se valida el consentimiento de datos del tutor. Ya está otorgado desde su registro (4.9), pero se verifica igual: es la misma condición que exige el alta por la clínica (regla 2.2), y el alta no puede depender de por dónde entró.
+3. Se crea el Paciente con `tutor_id` = el tutor del token, que queda como dueño. Nunca se toma del cuerpo del pedido: sería dar de alta una mascota a nombre de otro.
+4. No se crea ningún vínculo con clínica. La mascota existe, es legible por su dueño y no la ve nadie más.
+5. Se registra la creación en Auditoría.
+
+> El número de chip no se carga acá: lo pone el veterinario (3.2).
+>
+> Una mascota sin clínica **no admite citas** (regla 2.2), y es lo único que le falta hasta que el tutor comparta. Todo lo demás —la ficha, el peso, los adjuntos que él suba— funciona desde el primer minuto. Es deliberado que la aplicación sirva para algo antes de que exista una veterinaria de por medio: esa era exactamente la fricción que el modelo anterior imponía.
+
+### 4.18 Compartir una mascota con una clínica
+
+1. El **dueño** busca la clínica en el directorio, por nombre. El directorio devuelve nombre, dirección y contacto — lo suficiente para no confundir dos sucursales, y nada más.
+2. Se valida que el Paciente esté vigente y que esa clínica no tenga ya un vínculo vigente con él.
+3. Se crea el vínculo (`origen = compartido_por_el_tutor`, con el usuario que lo otorgó) y se audita.
+4. A partir de ese momento, **todo el plantel vigente de esa clínica** alcanza la mascota: lee su historial completo, escribe eventos y medicación, y agenda citas en su propia agenda.
+
+**Revocarlo** es el camino inverso, y lo puede hacer el dueño sobre cualquier clínica o un veterinario sobre la suya. Se rechaza mientras esa clínica tenga citas pendientes de esa mascota (regla 2.4). Lo que la clínica escribió se queda con su autoría; lo que pierde es el acceso de ahí en adelante.
+
+> Compartir da acceso **al historial completo, incluido lo que escribieron otras clínicas**, y no solo a lo que esa clínica vaya a escribir. Es el punto entero de la funcionalidad —un profesional que no ve las vacunas que puso otro no puede atender bien— y conviene decirlo explícito en la pantalla antes de confirmar, no después.
+
+### 4.19 Invitar a un co-tutor
+
+1. El **dueño** ingresa el correo de la persona y elige el nivel: edición o lectura.
+2. Se valida que el Paciente esté vigente, que no se esté invitando al propio dueño y que esa persona no tenga ya un acceso vigente sobre esa mascota — cambiar de nivel es editar el acceso que existe, no emitir otra invitación.
+3. Se emite un código de un solo uso, se guarda **hasheado** y se envía por correo. Si había otra invitación pendiente para ese mismo correo y esa misma mascota, queda anulada: mismo criterio que la recuperación de contraseña (4.4.1).
+4. Quien recibe el enlace ve, **sin autenticarse**, qué mascota es, con qué nivel y quién lo invita. Nada del historial, y nunca si ese correo tiene o no una cuenta en Wayka.
+5. Para canjearlo tiene que estar autenticado como tutor. Si no tiene cuenta, se registra primero (4.9) y vuelve.
+6. El canje valida que el código esté vigente, sin usar y sin anular, **que el correo de la cuenta sea el invitado**, que el Paciente siga vigente y que el consentimiento de datos esté otorgado. En una sola transacción marca el código como usado, crea el acceso con su `consentimiento_at` y audita.
+
+> El canje exige que el correo coincida porque, si no, un enlace reenviado lo estrena cualquiera y la invitación deja de estar dirigida a alguien.
+>
+> Los errores del canje son **indistinguibles entre sí**: inválido, vencido y ya usado devuelven lo mismo, con el mismo criterio que la recuperación de contraseña.
+>
+> **Revocar un acceso** lo hace el dueño, o el propio co-tutor sobre el suyo. El efecto en el servidor es inmediato; en un teléfono sin señal, no — ver Sincronización sin Conexión, 8, que explica hasta cuándo puede seguir leyéndose una copia ya descargada y qué se hace al respecto. La interfaz se lo dice al dueño en el momento de revocar, en vez de prometerle algo que el sistema no puede cumplir.
 
 ## 5. Fuera de alcance de este documento
 
