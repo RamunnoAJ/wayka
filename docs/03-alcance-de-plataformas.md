@@ -101,6 +101,12 @@ Mismo conjunto funcional que las secciones 3.3 a 3.6, adaptado a formato móvil.
 
 Son las mismas en las dos plataformas. Están diseñadas para teléfono —una columna, barra inferior de pestañas— y en el navegador se muestran en esa misma composición, centradas: es una decisión de alcance, no un pendiente olvidado. Un kit propio de tutor-web se puede pedir más adelante sin rehacer nada de esto.
 
+**La barra tiene tres pestañas: Mascotas, Citas y Ajustes.** Es la lista entera de lo que el tutor abre por sí mismo; todo lo demás es una pantalla de detalle a la que se llega desde una de las tres.
+
+- Los **adjuntos no son pestaña**: acompañan a una mascota y no viven por su cuenta. Un listado global de archivos sueltos, sin la ficha que les da sentido, no responde ninguna pregunta que el tutor se haga. Se entra a ellos desde la ficha (5.6).
+- La **ficha de paciente**, **compartir** y **quién la ve** cuelgan de Mascotas: todas piden una mascota elegida antes de existir.
+- Los **avisos no son pestaña**: son un interruptor por teléfono, no una bandeja (5.5), y viven adentro de Ajustes junto con la ficha propia del tutor (5.8).
+
 ### 5.1 Login / Registro
 - Autenticación por email + contraseña, o con Google.
 - **Registro abierto**: el tutor crea su cuenta desde la app sin intervención de una clínica, indicando nombre, email, contraseña y el consentimiento de uso de datos (proceso 4.9 de Reglas de Negocio). El registro crea su ficha de Tutor junto con la cuenta.
@@ -109,7 +115,7 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 ### 5.2 Mis mascotas
 - Listado de las mascotas del tutor autenticado: las suyas y las que otra persona le compartió, con una etiqueta que distingue unas de otras y con qué nivel.
 - **Alta de una mascota** (Reglas de Negocio, 4.17). No pide clínica: la mascota nace del tutor y se comparte después. La pantalla vacía ofrece cargar la primera, en vez de pedir que espere a que una clínica lo haga.
-- Las invitaciones pendientes aparecen arriba del listado, que es donde el tutor mira. No suman un ítem a la barra de pestañas — ya tiene cinco.
+- Las invitaciones pendientes aparecen arriba del listado, que es donde el tutor mira. No suman un ítem a la barra de pestañas: aceptar una deja la mascota en este mismo listado, así que la acción ya está en su lugar y una pestaña propia solo agregaría un desvío para volver acá.
 
 ### 5.3 Ficha de paciente
 - Historial de eventos clínicos: fecha, tipo, descripción, diagnóstico, y **quién lo escribió** — el profesional y su clínica, que con una mascota compartida ya no son siempre los mismos.
@@ -123,9 +129,12 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 - Confirmar o solicitar reagenda de una cita (sin poder cambiar el estado directamente, según proceso 4.4 de Reglas de Negocio). Al reagendar, el tutor elige entre las horas válidas de la clínica que atiende a su mascota, igual que el veterinario.
 
 ### 5.5 Notificaciones — solo móvil
+
+No es una pantalla de la barra: lo que el tutor toca de todo esto es un interruptor, y vive en Ajustes (5.8). La sección define qué se envía y bajo qué reglas.
+
 - Recordatorio push el día anterior a una cita —a una hora fija— y otro un par de horas antes del turno, sobre las citas con `notificar_tutor` habilitado (Reglas de Negocio, 4.15).
 - La app registra el dispositivo al iniciar sesión y lo da de baja al cerrarla: una cuenta sin dispositivo registrado no recibe avisos. **El tutor que solo entra por web no recibe ninguno**, y la pantalla se lo dice ahí mismo en vez de dejarlo esperando un aviso que no va a llegar.
-- **El tutor prende y apaga los avisos desde la app**, en la pantalla de Avisos. Apagarlos da de baja este dispositivo; prenderlos lo da de alta de nuevo.
+- **El tutor prende y apaga los avisos desde la app**, en Ajustes (5.8). Apagarlos da de baja este dispositivo; prenderlos lo da de alta de nuevo.
   - Es **por teléfono, no por cuenta**: el modelo registra Dispositivos y no una preferencia del Usuario (Modelo de Datos, sección 5). Apagarlos en un aparato no los apaga en el otro del mismo tutor — el que molesta es el que se tiene en la mano.
   - La decisión **sobrevive al cierre de sesión**. El registro automático del login la respeta; si no, el próximo ingreso volvería a prenderlos y el control no serviría de nada. Cerrar sesión sigue dando de baja el aparato por seguridad, pero eso no es apagarlos: al volver a entrar quedan como el tutor los dejó.
   - **No reemplaza al permiso del sistema operativo**, que es otra cosa y solo se revierte desde los ajustes del teléfono. Mientras el permiso no esté concedido no se ofrece el interruptor: sería un control que el sistema ya bloqueó. Conceder el permiso los deja prendidos, porque conceder ya fue decir que sí.
@@ -145,12 +154,22 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 - Edición de los campos no clínicos: nombre, especie, raza, fecha de nacimiento, sexo y peso actual. La hace el dueño y el co-tutor con nivel de edición; el de lectura los ve y no los toca.
 - El **número de chip no se edita desde acá**: lo carga el veterinario, que es quien lo implanta y lo lee (Reglas de Negocio, 3.2).
 
-### 5.8 Mis datos (ficha propia del tutor)
+### 5.8 Ajustes
+Una sola pestaña para todo lo que es del tutor y no de una mascota: su ficha, su cuenta y el interruptor de avisos. Estaban separadas en dos pestañas y no lo justificaban — la de avisos era un único control, y un control solo no sostiene una entrada en la barra.
+
+**Ficha propia del tutor**
 - Lectura y edición de la ficha propia: nombre, contacto, dirección y documento.
 - La dirección se escribe con autocompletado y se confirma sobre un mapa, que es lo que permite ver que el punto es el correcto antes de guardarlo. **Confirmarla no es obligatorio**: se puede guardar una dirección escrita a mano que el mapa no reconoce, y sin conexión el campo es texto libre (Arquitectura, 3.6). La pantalla lo tiene que dejar claro — un campo que parece exigir la sugerencia deja trabada a la persona que vive en una calle mal mapeada.
-- Cambio de la contraseña de la propia cuenta, en su propia sección.
 - El consentimiento de uso de datos no se edita desde acá: se otorga en el registro y no se revoca por la aplicación.
 - El tutor no ve ni busca fichas de otros tutores, y no puede dar de baja la suya.
+
+**Cuenta**
+- Cambio de la contraseña de la propia cuenta.
+- Cerrar sesión, que además da de baja este dispositivo (5.5).
+
+**Avisos — solo móvil**
+- El interruptor de recordatorios push, con las reglas de 5.5: es por teléfono y no por cuenta, sobrevive al cierre de sesión, y no aparece mientras el permiso del sistema operativo no esté concedido.
+- En web el bloque no se muestra como un control apagado sino como la explicación de que los avisos llegan al teléfono: un interruptor que la plataforma no puede honrar es peor que su ausencia.
 
 ### 5.9 Compartir una mascota
 Solo el dueño. Dos caminos en la misma pantalla:
@@ -171,7 +190,7 @@ Quien recibe la invitación no necesita tener cuenta: el correo trae un enlace, 
 ### 5.11 Invitaciones recibidas
 - Las que están pendientes, con qué mascota es, quién invita y con qué nivel. **Nada del historial**: aceptar es justamente lo que da acceso a él.
 - Aparecen **arriba de Mis mascotas**, con un contador en esa misma pestaña. Es donde el tutor mira, y una invitación que vive detrás de un menú es una que nadie encuentra.
-  - El contador va en **Mascotas y no en Avisos**: la acción de aceptar vive ahí, y un contador que lleva a una pantalla sin nada que hacer es peor que ninguno. Avisos es el interruptor del push del teléfono, no una bandeja.
+  - El contador va en **Mascotas y no en Ajustes**: la acción de aceptar vive ahí, y un contador que lleva a una pantalla sin nada que hacer es peor que ninguno. Los avisos son el interruptor del push del teléfono, no una bandeja.
 - El **enlace del correo sigue siendo el otro camino**, y no es redundante: quien todavía no tiene cuenta no puede recibir un aviso dentro de una app en la que no está. Si el enlace se abre sin sesión, la pantalla de ingreso vuelve a la invitación después de entrar o de registrarse.
 - Aceptar o rechazar. Aceptar deja la mascota en el listado con su etiqueta de nivel; rechazar la anula, y el enlace del correo deja de servir.
   - Desde la app se acepta **por identificador y no con el token**: el token es la credencial y no vuelve en ningún listado, porque devolverlo lo convertiría en algo que se puede reenviar. Lo que autoriza en los dos casos es lo mismo — que la cuenta tenga el correo al que se dirigió la invitación.
