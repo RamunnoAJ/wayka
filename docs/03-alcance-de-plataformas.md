@@ -170,8 +170,11 @@ Quien recibe la invitación no necesita tener cuenta: el correo trae un enlace, 
 
 ### 5.11 Invitaciones recibidas
 - Las que están pendientes, con qué mascota es, quién invita y con qué nivel. **Nada del historial**: aceptar es justamente lo que da acceso a él.
-- Se llega desde el enlace del correo o desde el aviso arriba de Mis mascotas. Si el enlace se abre sin sesión, la pantalla de ingreso vuelve a la invitación después de entrar o de registrarse.
-- Aceptar o rechazar. Aceptar deja la mascota en el listado con su etiqueta de nivel.
+- Aparecen **arriba de Mis mascotas**, con un contador en esa misma pestaña. Es donde el tutor mira, y una invitación que vive detrás de un menú es una que nadie encuentra.
+  - El contador va en **Mascotas y no en Avisos**: la acción de aceptar vive ahí, y un contador que lleva a una pantalla sin nada que hacer es peor que ninguno. Avisos es el interruptor del push del teléfono, no una bandeja.
+- El **enlace del correo sigue siendo el otro camino**, y no es redundante: quien todavía no tiene cuenta no puede recibir un aviso dentro de una app en la que no está. Si el enlace se abre sin sesión, la pantalla de ingreso vuelve a la invitación después de entrar o de registrarse.
+- Aceptar o rechazar. Aceptar deja la mascota en el listado con su etiqueta de nivel; rechazar la anula, y el enlace del correo deja de servir.
+  - Desde la app se acepta **por identificador y no con el token**: el token es la credencial y no vuelve en ningún listado, porque devolverlo lo convertiría en algo que se puede reenviar. Lo que autoriza en los dos casos es lo mismo — que la cuenta tenga el correo al que se dirigió la invitación.
 
 ## 6. Fuera de alcance de este documento
 

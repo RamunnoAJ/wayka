@@ -494,13 +494,15 @@ El calendario existe para que la mascota llegue a su control; el recordatorio es
 2. Se valida que el Paciente esté vigente, que no se esté invitando al propio dueño y que esa persona no tenga ya un acceso vigente sobre esa mascota — cambiar de nivel es editar el acceso que existe, no emitir otra invitación.
 3. Se emite un código de un solo uso, se guarda **hasheado** y se envía por correo. Si había otra invitación pendiente para ese mismo correo y esa misma mascota, queda anulada: mismo criterio que la recuperación de contraseña (4.4.1).
 4. Quien recibe el enlace ve, **sin autenticarse**, qué mascota es, con qué nivel y quién lo invita. Nada del historial, y nunca si ese correo tiene o no una cuenta en Wayka.
-5. Para canjearlo tiene que estar autenticado como tutor. Si no tiene cuenta, se registra primero (4.9) y vuelve.
+5. Para canjearlo tiene que estar autenticado como tutor. Si no tiene cuenta, se registra primero (4.9) y vuelve. Quien **ya tiene cuenta** no depende del correo: la invitación le aparece en la aplicación, resuelta por su dirección, y la acepta desde ahí sin el enlace. El token es la credencial de quien llega sin sesión, y por eso no se devuelve en ningún listado.
 6. El canje valida que el código esté vigente, sin usar y sin anular, **que el correo de la cuenta sea el invitado**, que el Paciente siga vigente y que el consentimiento de datos esté otorgado. En una sola transacción marca el código como usado, crea el acceso con su `consentimiento_at` y audita.
 
 > El canje exige que el correo coincida porque, si no, un enlace reenviado lo estrena cualquiera y la invitación deja de estar dirigida a alguien.
 >
 > Los errores del canje son **indistinguibles entre sí**: inválido, vencido y ya usado devuelven lo mismo, con el mismo criterio que la recuperación de contraseña.
 >
+> **Rechazar** es del invitado y anula la invitación sin dar acceso; el enlace del correo deja de servir. Se distingue de **anular**, que es del dueño arrepintiéndose de haberla mandado: son la misma escritura con dos motivos distintos, y quién puede hacerla no es el mismo.
+
 > **Revocar un acceso** lo hace el dueño, o el propio co-tutor sobre el suyo. El efecto en el servidor es inmediato; en un teléfono sin señal, no — ver Sincronización sin Conexión, 8, que explica hasta cuándo puede seguir leyéndose una copia ya descargada y qué se hace al respecto. La interfaz se lo dice al dueño en el momento de revocar, en vez de prometerle algo que el sistema no puede cumplir.
 
 ## 5. Fuera de alcance de este documento
