@@ -116,7 +116,7 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 - Medicación activa e histórica.
 - Qué clínicas la atienden hoy.
 - **Sin permisos de edición sobre ningún dato clínico**, en ningún nivel (regla de la matriz de permisos). Lo que sí se edita son los datos de la mascota, y depende del nivel (5.7).
-- Para el dueño, la entrada a "Quién la ve" (5.10).
+- La entrada a "Quién la ve" (5.10) **cambia según el estado**: mientras no la vea nadie es la invitación a compartir, en un toque; ya compartida es la fila de gestión, que dice con quién. Una mascota recién cargada no la ve nadie, y ahí lo que hace falta no es la entrada a una lista vacía sino la acción — sin una clínica que la atienda, nadie va a escribirle el historial.
 
 ### 5.4 Calendario
 - Vista de citas pendientes con su fecha **y hora**, y con quién la va a atender si ya está asignada.
