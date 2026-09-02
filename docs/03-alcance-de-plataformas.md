@@ -52,9 +52,13 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 
 ### 3.2 Panel de clínica (rol: Clínica_admin)
 
-Es la pantalla entera del rol: no hay barra de navegación con secciones paralelas porque no hay nada más. Un tablero arriba y la gestión abajo.
+**Son cinco secciones de la barra de navegación, no una sola pantalla**: Panel, Horario, Ausencias, Plantel y Mi clínica. La primera versión de este documento decía lo contrario —"la pantalla entera del rol, un tablero arriba y la gestión abajo"— y valía cuando el rol solo tenía tres formularios de configuración. Con el tablero, el horario por día y las ausencias encima, apilarlas dejaba lo único que se mira todos los días arriba de tres formularios que se tocan una vez.
 
-#### 3.2.1 Tablero
+El corte es por **frecuencia de uso** y no por afinidad temática. El horario y las ausencias definen las dos quién atiende cuándo, y aun así van separadas: el horario se configura una vez, y una ausencia se carga cada semana y muchas veces con apuro.
+
+> **Cerrar sesión no está en ninguna de las cinco.** Vive en la barra de navegación, al lado del nombre de quien está adentro: es donde se lo busca, y donde ya estaba para los otros roles.
+
+#### 3.2.1 Panel — el tablero
 
 Cuatro bloques de **conteos**. Ninguno lista registros ni nombra una mascota: el rol no alcanza el historial clínico y un listado de atenciones con hora y profesional lo reconstruye por el costado (Modelo de Datos, 5).
 
@@ -62,6 +66,8 @@ Cuatro bloques de **conteos**. Ninguno lista registros ni nombra una mascota: el
 - **Sin asignar** — cuántas Citas del período no tienen profesional. Es la cola de lo que hay que repartir (3.6), y crece sola cuando se carga una ausencia (3.2.4).
 - **Atenciones** — cuántas Consultas atendidas se asentaron en el período, por profesional y por origen (agendada / espontánea / urgencia). Es el volumen de trabajo real, que no coincide con la agenda: la mayoría de las atenciones de una veterinaria no estaban agendadas.
 - **Cartera** — pacientes con vínculo vigente, y cuántos entraron en el período separados por vía (alta de la clínica / compartido por el tutor).
+
+Es lo único de la sección que se mira todos los días, y por eso es lo único que hay en esta pantalla.
 
 > **Toggle semana / mes, en todo el tablero a la vez.** Un control único arriba y no uno por bloque: comparar la ocupación de la semana contra las atenciones del mes es leer dos cosas que no se corresponden, y dos controles invitan justo a eso. El período se lee en la `zona_horaria` de la clínica (Modelo de Datos, 4.3).
 >
@@ -81,6 +87,7 @@ Cuatro bloques de **conteos**. Ninguno lista registros ni nombra una mascota: el
 #### 3.2.3 Horario de atención
 
 - Edición de las **Franjas de atención** de la clínica (Modelo de Datos, 4.18) y de la duración del turno. Los dos definen la grilla con la que el veterinario agenda, así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
+- **La duración del turno se edita acá y no con los datos administrativos**, aunque sea un campo de la Clínica y no de la Franja: se valida contra las franjas —un turno que no divide un tramo se rechaza— y tener un control en una pantalla y el otro en otra dejaría un error que no se puede corregir sin cambiar de pantalla.
 - Se edita **la semana entera y se guarda de una vez**: la grilla se valida completa (que ninguna franja se solape, que el turno divida a cada una) antes de aceptarse.
 - Un día **sin ninguna franja es un día cerrado**, y la pantalla lo dice con esas palabras en vez de dejar el día vacío y ambiguo. Dos franjas el mismo día son el **corte de mediodía**: el hueco entre las dos es lo que las hace dos y no una.
 - **Previsualización antes de guardar**: cuántos turnos por día produce la grilla nueva, y qué Citas pendientes quedarían afuera. El horario no se puede achicar mientras esas citas existan (regla 2.2), y la pantalla tiene que decir cuáles son **antes** del intento, no como el texto de un error — corregir la grilla a ciegas hasta que el guardado deje de fallar no es editar un horario.
@@ -92,7 +99,7 @@ Cuatro bloques de **conteos**. Ninguno lista registros ni nombra una mascota: el
 - Antes de guardar, la pantalla dice **cuántas citas asignadas caen adentro del rango y cuáles son**. Al guardar, esas citas quedan **sin profesional** —no se cancelan ni se mueven de hora— y pasan a la cola de sin asignar (3.6). La ausencia se guarda siempre: el diálogo informa el efecto, no pide permiso para dejar de bloquear.
 - Dar de baja una ausencia **no devuelve las citas** a quien las tenía. La pantalla lo dice, porque lo contrario es lo que cualquiera esperaría.
 
-#### 3.2.5 La clínica y la propia cuenta
+#### 3.2.5 Mi clínica
 
 - Edición de datos administrativos de la Clínica: nombre, dirección con confirmación en el mapa, contacto.
 - Cambio de la contraseña de la propia cuenta.
