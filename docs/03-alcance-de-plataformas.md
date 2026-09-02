@@ -82,11 +82,15 @@ Es lo único de la sección que se mira todos los días, y por eso es lo único 
 #### 3.2.2 Agenda
 
 - El calendario de la clínica, **el mismo que ve el veterinario** (3.6): por día, semana y mes, con la mascota, el tipo de cita y quién atiende.
+- **Agendar un turno nuevo**, sobre la grilla de la clínica (3.2.4) y con las mismas reglas que usa el veterinario. Para elegir la mascota hay una **búsqueda acotada a la cartera**: nombre, especie y a qué tutor llamar, sin abrir ninguna ficha.
+- **Reagendar** una cita pendiente: fecha, hora y si se le avisa al tutor.
 - **Asignar y desasignar profesional**, que es la tarea que el tablero ya señalaba sin dejar hacer: el contador de "sin asignar" (3.2.1) es la cola de lo que hay que repartir. No se ofrece a quien ya tiene otra cita a esa hora ni a quien tiene una ausencia cargada (3.2.3).
-- **No agenda, no reagenda y no da de baja una cita**, y no es un olvido: mover una cita de hora es una decisión clínica —hay que avisarle al tutor y ver si el turno sirve—, y repartir es organización del trabajo.
+- **No da de baja una cita**: retirarla del calendario es decir que no va a ocurrir, y eso lo sabe quien atiende o quien lleva a la mascota.
 - **No asienta la atención.** Eso es afirmación asistencial y la hace quien atendió (3.3.1).
 
 > La primera versión de este documento no le daba agenda a este rol, con el criterio de que el calendario cuelga del Paciente. Se cambió porque una Cita no lleva diagnóstico: dice cuándo viene quién, que es la pregunta del mostrador y la tarea de quien administra la clínica. Lo que sigue afuera es el historial, la medicación, los adjuntos y las fichas.
+>
+> La segunda versión le daba **solo la asignación**, con el argumento de que agendar y mover un turno son criterio clínico. Ese criterio está reservado frente al **tutor**, y el clínica_admin es la clínica: recepción toma y mueve turnos todo el día. Lo que quedó afuera es solo la baja.
 
 #### 3.2.3 Plantel
 

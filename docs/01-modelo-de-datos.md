@@ -578,11 +578,11 @@ Cuándo un veterinario no está disponible para atender. Existe para que la gril
 | Entidad | Quién escribe | Quién lee |
 |---|---|---|
 | Evento clínico, Medicación | Solo veterinario, sobre los pacientes vinculados a su clínica: cualquiera del plantel edita y da de baja, no solo el autor (Reglas de Negocio, 3.2) | Veterinario (todo) + el dueño y sus co-tutores, en cualquier nivel (solo lectura) |
-| Cita / Calendario | Veterinario crea, en su propia clínica; el dueño y el co-tutor con edición confirman y reagendan. **Clínica_admin: solo la asignación de profesional**, sobre las citas de su clínica | Veterinario + el dueño y sus co-tutores + clínica_admin, sobre las citas de su propia clínica |
+| Cita / Calendario | Veterinario y clínica_admin, en su propia clínica: agendan, reagendan y reparten. El dueño y el co-tutor con edición confirman y reagendan. **La baja es del veterinario y del tutor**, no del clínica_admin | Veterinario + el dueño y sus co-tutores + clínica_admin, sobre las citas de su propia clínica |
 | Adjuntos | Veterinario + el dueño y el co-tutor con edición. Cada uno retira los que subió | Veterinario + el dueño y sus co-tutores |
 | Dispositivo | Cada usuario los suyos (los registra al entrar y los da de baja al salir) | Cada usuario los suyos |
 | Notificación | Nadie: las escribe el proceso que las encola y las despacha | Nadie por API en el MVP: llegan como push, no se listan |
-| Paciente (datos básicos) | Alta: el dueño, o un veterinario a nombre de un tutor. Edición de los datos no clínicos: el dueño, el co-tutor con edición y el veterinario de una clínica vinculada. `identificador_externo` (chip): solo el veterinario. Baja: solo el dueño | Veterinario de una clínica vinculada + el dueño y sus co-tutores. Clínica_admin sin acceso |
+| Paciente (datos básicos) | Alta: el dueño, o un veterinario a nombre de un tutor. Edición de los datos no clínicos: el dueño, el co-tutor con edición y el veterinario de una clínica vinculada. `identificador_externo` (chip): solo el veterinario. Baja: solo el dueño | Veterinario de una clínica vinculada + el dueño y sus co-tutores. Clínica_admin: **solo la proyección de la cartera** (ver la nota) |
 | Vínculo con clínica | Otorga y revoca: solo el dueño. Un veterinario puede desvincular su propia clínica | El dueño, sus co-tutores y los veterinarios de las clínicas vinculadas. Clínica_admin, **solo agregados** de su propia clínica |
 | Acceso de co-tutor, Invitación | Solo el dueño. El co-tutor puede renunciar al suyo | El dueño y sus co-tutores (los co-tutores, sin acciones) |
 | Tutor (ficha) | Veterinario de una clínica vinculada a esa ficha (alta y edición, incluido completar documento y dirección); el propio tutor sobre la suya, salvo el consentimiento | Búsqueda: cualquier veterinario. Ficha concreta: veterinario vinculado + el propio tutor. Clínica_admin sin acceso |
@@ -603,13 +603,19 @@ Cuándo un veterinario no está disponible para atender. Existe para que la gril
 
 > El rol clínica_admin gestiona veterinarios y datos administrativos de la clínica, y **no tiene acceso al historial clínico de ningún paciente**: ni al Evento clínico, ni a la Medicación, ni a los Adjuntos, ni a la ficha de un Paciente o de un Tutor. Ese acceso es del veterinario que atiende y del tutor.
 
+> **La cartera es una proyección, no la ficha.** Para agendar hay que elegir una mascota, y el clínica_admin no lee Paciente. Lo que sí alcanza es una lista acotada a la cartera de su propia clínica con **nombre, especie, y el nombre y contacto de su tutor** — lo justo para tomar un turno por teléfono y saber a quién llamar. Ni fecha de nacimiento, ni sexo, ni peso, ni chip, ni nada que cuelgue de la mascota.
+>
+> Es el mismo criterio con el que el tutor lee el directorio de Clínicas (4.3): lo que protege el dato no es el alcance sino **la proyección**. Y es poco más de lo que la agenda ya le muestra, que trae el nombre y la especie de cada cita.
+
 > **La agenda es del libro de turnos, no del historial.** El clínica_admin lee las Citas de su clínica fila por fila —con la mascota, el tipo y quién atiende— y reparte las que no tienen profesional. Una Cita no lleva diagnóstico ni evolución: es cuándo viene quién, y atender esa pregunta es la tarea de quien administra la clínica.
 >
 > Es un cambio respecto de la versión anterior de esta sección, que le daba **solo conteos** de Cita y dejaba escrito que "un endpoint que devuelva Citas fila por fila sigue estando fuera del alcance de este rol". Ese criterio trataba a la agenda como si fuera historial. El costo asumido y explícito es que "Luna, cirugía, martes 10:00" es información de salud de un paciente identificado, y queda alcanzada por el aviso de privacidad como el resto del padrón.
 >
 > Lo que **no** cambió: sigue sin alcanzar Evento clínico, Medicación, Adjuntos, ficha de Paciente ni ficha de Tutor. Y **no asienta la atención** (4.16), que es afirmación asistencial y la hace quien atendió.
 >
-> **De la Cita solo escribe la asignación.** Puede repartir y desasignar; no crea, no reagenda y no da de baja. Mover una cita de hora es una decisión clínica —hay que avisarle al tutor y ver si el turno sirve—, y repartir es organización del trabajo, que es lo suyo.
+> **Agenda, reagenda y reparte; no da de baja.** La versión anterior de esta sección le dejaba solo la asignación, con el argumento de que agendar y mover un turno son decisiones clínicas. El argumento estaba mal aplicado: lo que Reglas de Negocio reserva como criterio clínico es frente al **tutor** —"qué control corresponde y quién lo hace son criterio de la clínica"— y el clínica_admin *es* la clínica. Tomar y mover turnos es la tarea del mostrador.
+>
+> Lo que sigue siendo del veterinario y del tutor es **dar de baja una cita**: retirarla del calendario es decir que no va a ocurrir, y eso lo sabe quien atiende o quien lleva a la mascota.
 
 > **Agregados de gestión.** Además de la agenda, el clínica_admin lee **conteos** sobre su propia clínica: cuántas Consultas atendidas hubo por semana y por profesional, cuántos Vínculos con clínica están vigentes. Se decidió que **un conteo sin `paciente_id` ni dato clínico no es historial clínico**, y negárselo dejaba al rol que administra la clínica sin poder saber si su propia agenda se está usando.
 >

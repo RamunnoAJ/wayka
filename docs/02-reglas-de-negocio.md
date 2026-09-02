@@ -195,7 +195,13 @@ Sobre el Paciente, el alcance se resuelve así:
 | Tutor **dueño** | Sus mascotas, estén atendidas por las clínicas que sea o por ninguna. Da de alta, lee, edita todos los datos no clínicos, gestiona las citas y los adjuntos, da de baja, y **administra los accesos**: comparte con clínicas, invita co-tutores, les cambia el nivel y los revoca. |
 | Tutor **co-tutor con edición** | Todo lo del dueño **salvo administrar**: no invita, no revoca, no cambia niveles y no da de baja la mascota. Sí lee el historial completo, edita los datos no clínicos, reagenda y retira citas, y sube adjuntos. |
 | Tutor **co-tutor con lectura** | Mira. El historial, la medicación, las citas y los adjuntos de esa mascota, sin escribir nada — ni el peso. |
-| Clínica_admin | Sin acceso: su rol alcanza datos administrativos, no las mascotas atendidas ni su historial (Modelo de Datos, sección 5). |
+| Clínica_admin | **Solo la cartera, y en proyección reducida**: busca y lista las mascotas con vínculo vigente con su clínica, y de cada una ve nombre, especie y el nombre y contacto de su tutor. No abre la ficha, no lee el historial ni la medicación, no edita nada y no da de alta ni de baja. |
+
+> **La cartera es una proyección, no la ficha.** Existe porque agendar exige elegir una mascota, y sin poder nombrarla el mostrador no puede tomar un turno. Lo que protege el dato no es el alcance sino la proyección, con el mismo criterio que el directorio de Clínicas que lee el tutor (3.2): salen nombre, especie y a quién llamar, y nada que cuelgue de la mascota — ni fecha de nacimiento, ni sexo, ni peso, ni chip.
+>
+> Es poco más de lo que la agenda ya le muestra, que trae el nombre y la especie de cada cita. Lo que agrega es poder encontrar a una mascota que **todavía no tiene ninguna**, que es justo el caso del primer turno.
+>
+> Acotada a la cartera de su propia clínica, no al padrón: a diferencia de la búsqueda de Tutor, que el veterinario hace sin acotar porque necesita encontrar fichas de otras clínicas para el alta, acá no hay ningún proceso que lo justifique.
 
 Sobre los datos de la ficha, la línea no la marca el rol sino qué dato es:
 
@@ -224,13 +230,17 @@ Sobre la Cita, el alcance se resuelve así:
 |---|---|
 | Veterinario | El calendario de los pacientes vinculados a su clínica: agenda —siempre en su propia clínica—, lista, lee, reagenda, asigna profesional y da de baja. **La asignación no acota el alcance**: un veterinario alcanza esas citas le toquen a él o a un colega. Que le asignen una cita es organización del trabajo, no un permiso. |
 | Tutor | Las citas de las mascotas que alcanza. El dueño y el co-tutor con edición leen, reagendan (fecha_programada), deciden si quieren que les avisen (notificar_tutor) y pueden darlas de baja; el co-tutor con lectura solo lee. Ningún tutor agenda citas nuevas, cambia el tipo ni asigna profesional: qué control corresponde y quién lo hace son criterio de la clínica. |
-| Clínica_admin | La agenda de su propia clínica: lista y lee las citas —con la mascota, el tipo y quién atiende— y **asigna o desasigna profesional**. No agenda, no reagenda, no cambia el tipo y no da de baja. El alcance sale de `Cita.clínica_id` y no del Paciente: la cita dice en qué clínica se agenda, y esa es la que el rol administra. |
+| Clínica_admin | La agenda de su propia clínica: lista, lee, **agenda, reagenda y reparte**, igual que el veterinario. Lo único que no hace es **dar de baja una cita**. El alcance sale de `Cita.clínica_id` y no del Paciente: la cita dice en qué clínica se agenda, y esa es la que el rol administra. |
 
 > **La agenda es el libro de turnos, no el historial.** Que el clínica_admin lea las citas de su clínica no afloja el alcance sobre el Paciente: sigue sin poder abrir una ficha, un historial, una medicación ni un adjunto, y sigue sin asentar la atención. Una Cita no lleva diagnóstico: dice cuándo viene quién, que es la pregunta del mostrador.
 >
 > Reemplaza al criterio anterior —"sin acceso: el calendario cuelga del Paciente"—, que trataba a la agenda como si fuera dato clínico. El costo asumido es explícito: "Luna, cirugía, martes 10:00" es información de salud de un paciente identificado.
 >
-> **Escribe la asignación y nada más.** Repartir es organización del trabajo, que es lo suyo; mover una cita de hora es una decisión clínica —hay que avisarle al tutor y ver si el turno sirve—, y por eso una edición que toque cualquier otro campo se rechaza aunque venga del admin de esa clínica.
+> **Escribe todo lo de la agenda menos la baja.** La versión anterior le dejaba solo la asignación, con el argumento de que agendar y mover un turno son criterio clínico. Ese criterio esta misma tabla lo reserva frente al **tutor** —"qué control corresponde y quién lo hace son criterio de la clínica"— y el clínica_admin *es* la clínica: tomar y mover turnos es la tarea del mostrador.
+>
+> Retirar una cita del calendario sigue siendo del veterinario y del tutor: decir que algo **no va a ocurrir** lo sabe quien atiende o quien lleva a la mascota, no quien administra.
+>
+> Agendar exige elegir una mascota, y para eso el rol lee la **cartera** de su clínica en proyección reducida — ver el alcance sobre Paciente, más abajo.
 
 > El listado de pacientes es un endpoint con dos alcances: cuál aplica lo decide el rol del token, nunca un parámetro del cliente. El veterinario ve la cartera de su clínica; el tutor, sus mascotas.
 >
