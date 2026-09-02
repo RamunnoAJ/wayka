@@ -224,11 +224,17 @@ Sobre la Cita, el alcance se resuelve así:
 |---|---|
 | Veterinario | El calendario de los pacientes vinculados a su clínica: agenda —siempre en su propia clínica—, lista, lee, reagenda, asigna profesional y da de baja. **La asignación no acota el alcance**: un veterinario alcanza esas citas le toquen a él o a un colega. Que le asignen una cita es organización del trabajo, no un permiso. |
 | Tutor | Las citas de las mascotas que alcanza. El dueño y el co-tutor con edición leen, reagendan (fecha_programada), deciden si quieren que les avisen (notificar_tutor) y pueden darlas de baja; el co-tutor con lectura solo lee. Ningún tutor agenda citas nuevas, cambia el tipo ni asigna profesional: qué control corresponde y quién lo hace son criterio de la clínica. |
-| Clínica_admin | Sin acceso: el calendario cuelga del Paciente, y su rol no alcanza las mascotas atendidas. |
+| Clínica_admin | La agenda de su propia clínica: lista y lee las citas —con la mascota, el tipo y quién atiende— y **asigna o desasigna profesional**. No agenda, no reagenda, no cambia el tipo y no da de baja. El alcance sale de `Cita.clínica_id` y no del Paciente: la cita dice en qué clínica se agenda, y esa es la que el rol administra. |
+
+> **La agenda es el libro de turnos, no el historial.** Que el clínica_admin lea las citas de su clínica no afloja el alcance sobre el Paciente: sigue sin poder abrir una ficha, un historial, una medicación ni un adjunto, y sigue sin asentar la atención. Una Cita no lleva diagnóstico: dice cuándo viene quién, que es la pregunta del mostrador.
+>
+> Reemplaza al criterio anterior —"sin acceso: el calendario cuelga del Paciente"—, que trataba a la agenda como si fuera dato clínico. El costo asumido es explícito: "Luna, cirugía, martes 10:00" es información de salud de un paciente identificado.
+>
+> **Escribe la asignación y nada más.** Repartir es organización del trabajo, que es lo suyo; mover una cita de hora es una decisión clínica —hay que avisarle al tutor y ver si el turno sirve—, y por eso una edición que toque cualquier otro campo se rechaza aunque venga del admin de esa clínica.
 
 > El listado de pacientes es un endpoint con dos alcances: cuál aplica lo decide el rol del token, nunca un parámetro del cliente. El veterinario ve la cartera de su clínica; el tutor, sus mascotas.
 >
-> El listado de **citas** funciona igual y por el mismo motivo. Existe además del calendario de una mascota porque las dos preguntas son distintas: "qué le toca a Luna" cuelga del Paciente, pero "qué tiene la clínica esta semana" (Alcance de Plataformas, 3.6) no cuelga de ninguna mascota en particular. Sin él, la agenda habría que armarla pidiendo el calendario de cada paciente de la cartera, uno por uno.
+> El listado de **citas** funciona igual y por el mismo motivo, con **tres** alcances y no dos: el veterinario y el clínica_admin ven la agenda de su clínica, y el tutor las citas de sus mascotas. Existe además del calendario de una mascota porque las dos preguntas son distintas: "qué le toca a Luna" cuelga del Paciente, pero "qué tiene la clínica esta semana" (Alcance de Plataformas, 3.6) no cuelga de ninguna mascota en particular. Sin él, la agenda habría que armarla pidiendo el calendario de cada paciente de la cartera, uno por uno.
 
 Sobre la Clínica, el alcance se resuelve así:
 
@@ -446,7 +452,7 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 1. El administrador de la plataforma da de alta la Clínica y su cuenta clínica_admin en una sola operación, por fuera de la API HTTP (una herramienta de línea de comandos que invoca la misma capa de negocio).
 2. La cuenta se crea con clínica_id y clínica_de_pertenencia_id apuntando a la clínica recién creada, y **sin contraseña**: la define la propia clínica al estrenarla (proceso 4.16). La clínica nace con **Franjas de atención por defecto de lunes a viernes** y una duración de turno por defecto. Nace con horario y no vacía porque una clínica sin ninguna franja no admite ninguna cita, y la primera pantalla que vería el veterinario sería un calendario que rechaza todo.
 
-> **El horario por defecto es un punto de partida, no una configuración fija.** La clínica lo edita entero desde la web (Alcance de Plataformas, 3.2.3), con las mismas reglas que cualquier otro cambio de grilla: puede abrir el sábado, cerrar el miércoles, partir el mediodía o cambiar las horas de cualquier día. Lo que el alta elige es solo qué ve la clínica la primera vez que entra, y se eligió lunes a viernes porque es lo que más veterinarias hacen — no porque el sistema suponga que no se atiende el fin de semana.
+> **El horario por defecto es un punto de partida, no una configuración fija.** La clínica lo edita entero desde la web (Alcance de Plataformas, 3.2.4), con las mismas reglas que cualquier otro cambio de grilla: puede abrir el sábado, cerrar el miércoles, partir el mediodía o cambiar las horas de cualquier día. Lo que el alta elige es solo qué ve la clínica la primera vez que entra, y se eligió lunes a viernes porque es lo que más veterinarias hacen — no porque el sistema suponga que no se atiende el fin de semana.
 3. La herramienta emite un **token de activación de un solo uso** y lo imprime una única vez. El administrador se lo entrega a la clínica por el canal que haya acordado con ella; el sistema no lo envía por email ni lo vuelve a mostrar.
 4. A partir de ahí, ese clínica_admin es responsable de dar de alta las cuentas de los veterinarios de su clínica (regla 2.5).
 

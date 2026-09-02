@@ -52,7 +52,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 
 ### 3.2 Panel de clínica (rol: Clínica_admin)
 
-**Son cinco secciones de la barra de navegación, no una sola pantalla**: Panel, Horario, Ausencias, Plantel y Mi clínica. La primera versión de este documento decía lo contrario —"la pantalla entera del rol, un tablero arriba y la gestión abajo"— y valía cuando el rol solo tenía tres formularios de configuración. Con el tablero, el horario por día y las ausencias encima, apilarlas dejaba lo único que se mira todos los días arriba de tres formularios que se tocan una vez.
+**Son seis secciones de la barra de navegación, no una sola pantalla**: Panel, Agenda, Horario, Ausencias, Plantel y Mi clínica. La primera versión de este documento decía lo contrario —"la pantalla entera del rol, un tablero arriba y la gestión abajo"— y valía cuando el rol solo tenía tres formularios de configuración. Con el tablero, el horario por día y las ausencias encima, apilarlas dejaba lo único que se mira todos los días arriba de tres formularios que se tocan una vez.
 
 El corte es por **frecuencia de uso** y no por afinidad temática. El horario y las ausencias definen las dos quién atiende cuándo, y aun así van separadas: el horario se configura una vez, y una ausencia se carga cada semana y muchas veces con apuro.
 
@@ -62,8 +62,8 @@ El corte es por **frecuencia de uso** y no por afinidad temática. El horario y 
 
 Cuatro bloques de **conteos**. Ninguno lista registros ni nombra una mascota: el rol no alcanza el historial clínico y un listado de atenciones con hora y profesional lo reconstruye por el costado (Modelo de Datos, 5).
 
-- **Ocupación de la grilla** — turnos ocupados sobre turnos disponibles del período, y el mismo par por profesional. Los disponibles salen de las Franjas de atención y de la duración del turno (3.2.3); los ocupados, de las Citas pendientes. Es lo único del producto que cambia todos los días para este rol, y la razón por la que el tablero existe.
-- **Sin asignar** — cuántas Citas del período no tienen profesional. Es la cola de lo que hay que repartir (3.6), y crece sola cuando se carga una ausencia (3.2.4).
+- **Ocupación de la grilla** — turnos ocupados sobre turnos disponibles del período, y el mismo par por profesional. Los disponibles salen de las Franjas de atención y de la duración del turno (3.2.4); los ocupados, de las Citas pendientes. Es lo único del producto que cambia todos los días para este rol, y la razón por la que el tablero existe.
+- **Sin asignar** — cuántas Citas del período no tienen profesional. Es la cola de lo que hay que repartir (3.6), y crece sola cuando se carga una ausencia (3.2.5).
 - **Atenciones** — cuántas Consultas atendidas se asentaron en el período, por profesional y por origen (agendada / espontánea / urgencia). Es el volumen de trabajo real, que no coincide con la agenda: la mayoría de las atenciones de una veterinaria no estaban agendadas.
 - **Cartera** — pacientes con vínculo vigente, y cuántos entraron en el período separados por vía (alta de la clínica / compartido por el tutor).
 
@@ -77,14 +77,23 @@ Es lo único de la sección que se mira todos los días, y por eso es lo único 
 >
 > **No hay cobertura de historial** —qué porcentaje de las atenciones terminó con un evento clínico cargado— y no es un olvido: eso mide el desempeño de una persona, no la operación de la clínica, y se decidió dejarlo fuera del alcance de este rol. Se sigue calculando para el piloto por SQL (Telemetría de Producto, 9).
 
-#### 3.2.2 Plantel
+#### 3.2.2 Agenda
+
+- El calendario de la clínica, **el mismo que ve el veterinario** (3.6): por día, semana y mes, con la mascota, el tipo de cita y quién atiende.
+- **Asignar y desasignar profesional**, que es la tarea que el tablero ya señalaba sin dejar hacer: el contador de "sin asignar" (3.2.1) es la cola de lo que hay que repartir. No se ofrece a quien ya tiene otra cita a esa hora ni a quien tiene una ausencia cargada (3.2.5).
+- **No agenda, no reagenda y no da de baja una cita**, y no es un olvido: mover una cita de hora es una decisión clínica —hay que avisarle al tutor y ver si el turno sirve—, y repartir es organización del trabajo.
+- **No asienta la atención.** Eso es afirmación asistencial y la hace quien atendió (3.3.1).
+
+> La primera versión de este documento no le daba agenda a este rol, con el criterio de que el calendario cuelga del Paciente. Se cambió porque una Cita no lleva diagnóstico: dice cuándo viene quién, que es la pregunta del mostrador y la tarea de quien administra la clínica. Lo que sigue afuera es el historial, la medicación, los adjuntos y las fichas.
+
+#### 3.2.3 Plantel
 
 - Alta, edición y baja lógica de Veterinarios asociados a la clínica. La ficha y la cuenta de acceso se crean juntas, en una sola operación (proceso 4.12 de Reglas de Negocio), y la baja de la ficha desactiva la cuenta (4.13).
 - El listado avisa **quién no tiene matrícula cargada**. Sin matrícula el veterinario queda en modo restringido y no puede escribir historial (Reglas de Negocio, 2.2) — hoy eso se descubre cuando la persona intenta cargar un evento y no puede, que es el peor momento y el peor lugar para enterarse.
 - Estado de cada cuenta: activa, suspendida o dada de baja.
 - **Restablecer la contraseña de una cuenta del plantel**, desde la ficha de esa persona. No exige conocer la anterior. No es la única salida del veterinario que olvidó la suya —para eso está la recuperación sin sesión (3.1.2)—, sino la que no depende del correo: sirve cuando el enlace no llega o la persona ya no tiene acceso a esa casilla. La contraseña nueva se la comunica el administrador por un medio propio, fuera del sistema.
 
-#### 3.2.3 Horario de atención
+#### 3.2.4 Horario de atención
 
 - Edición de las **Franjas de atención** de la clínica (Modelo de Datos, 4.18) y de la duración del turno. Los dos definen la grilla con la que el veterinario agenda, así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
 - **La duración del turno se edita acá y no con los datos administrativos**, aunque sea un campo de la Clínica y no de la Franja: se valida contra las franjas —un turno que no divide un tramo se rechaza— y tener un control en una pantalla y el otro en otra dejaría un error que no se puede corregir sin cambiar de pantalla.
@@ -92,14 +101,14 @@ Es lo único de la sección que se mira todos los días, y por eso es lo único 
 - Un día **sin ninguna franja es un día cerrado**, y la pantalla lo dice con esas palabras en vez de dejar el día vacío y ambiguo. Dos franjas el mismo día son el **corte de mediodía**: el hueco entre las dos es lo que las hace dos y no una.
 - **Previsualización antes de guardar**: cuántos turnos por día produce la grilla nueva, y qué Citas pendientes quedarían afuera. El horario no se puede achicar mientras esas citas existan (regla 2.2), y la pantalla tiene que decir cuáles son **antes** del intento, no como el texto de un error — corregir la grilla a ciegas hasta que el guardado deje de fallar no es editar un horario.
 
-#### 3.2.4 Ausencias del plantel
+#### 3.2.5 Ausencias del plantel
 
 - Carga y baja de las **Ausencias** de un profesional (Modelo de Datos, 4.19): un rango con fecha y hora, sobre alguien del propio plantel. Sirven para que la grilla no le ofrezca turnos a quien no va a estar.
 - **No se pide un motivo**, y la pantalla no tiene dónde escribirlo. Es deliberado: el motivo de la ausencia de un empleado puede ser un dato de salud, y para que la agenda funcione alcanza con el rango.
 - Antes de guardar, la pantalla dice **cuántas citas asignadas caen adentro del rango y cuáles son**. Al guardar, esas citas quedan **sin profesional** —no se cancelan ni se mueven de hora— y pasan a la cola de sin asignar (3.6). La ausencia se guarda siempre: el diálogo informa el efecto, no pide permiso para dejar de bloquear.
 - Dar de baja una ausencia **no devuelve las citas** a quien las tenía. La pantalla lo dice, porque lo contrario es lo que cualquiera esperaría.
 
-#### 3.2.5 Mi clínica
+#### 3.2.6 Mi clínica
 
 - Edición de datos administrativos de la Clínica: nombre, dirección con confirmación en el mapa, contacto.
 - Cambio de la contraseña de la propia cuenta.
@@ -134,10 +143,10 @@ Es lo único de la sección que se mira todos los días, y por eso es lo único 
 - Vista rápida de medicación activa por paciente.
 
 ### 3.6 Calendario / Citas (rol: Veterinario)
-- Creación de citas (vacuna, control, cirugía programada) con **fecha y hora**, sobre la grilla que definen las franjas de atención y la duración del turno de la clínica (3.2.3). Las horas fuera de la grilla no se ofrecen: el backend las rechaza igual, pero ofrecerlas y después fallar es un error que la interfaz puede evitar.
+- Creación de citas (vacuna, control, cirugía programada) con **fecha y hora**, sobre la grilla que definen las franjas de atención y la duración del turno de la clínica (3.2.4). Las horas fuera de la grilla no se ofrecen: el backend las rechaza igual, pero ofrecerlas y después fallar es un error que la interfaz puede evitar.
 - La cita atendida se marca como cumplida desde la agenda, asentando la atención (3.3.1). No hay un control de "cumplida" aparte: cumplir una cita es haber atendido.
 - Vista de citas pendientes y vencidas de la clínica, por día, semana y mes, con quién atiende cada una. Son las citas agendadas **en esta clínica**: una mascota atendida también en otra tiene allá su propia agenda, que acá no se ve.
-- **Asignación de profesional**, opcional: una cita puede quedar de la clínica y repartirse después. Al asignar, no se ofrecen los profesionales que ya tienen otra cita en ese momento **ni los que tienen una ausencia cargada** (3.2.4) — el backend lo rechaza igual, pero ofrecerlo y después fallar es un error que la interfaz puede evitar. Si no queda ninguno disponible, la cita se agenda igual sin profesional: que no haya quién la atienda todavía no es motivo para no tomar el turno.
+- **Asignación de profesional**, opcional: una cita puede quedar de la clínica y repartirse después. Al asignar, no se ofrecen los profesionales que ya tienen otra cita en ese momento **ni los que tienen una ausencia cargada** (3.2.5) — el backend lo rechaza igual, pero ofrecerlo y después fallar es un error que la interfaz puede evitar. Si no queda ninguno disponible, la cita se agenda igual sin profesional: que no haya quién la atienda todavía no es motivo para no tomar el turno.
 - Filtrar la agenda por profesional, incluyendo "sin asignar": es la lista de lo que todavía hay que repartir.
 
 ### 3.7 Mi cuenta (rol: Veterinario)

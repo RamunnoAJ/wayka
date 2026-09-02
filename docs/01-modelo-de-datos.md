@@ -578,7 +578,7 @@ Cuándo un veterinario no está disponible para atender. Existe para que la gril
 | Entidad | Quién escribe | Quién lee |
 |---|---|---|
 | Evento clínico, Medicación | Solo veterinario, sobre los pacientes vinculados a su clínica: cualquiera del plantel edita y da de baja, no solo el autor (Reglas de Negocio, 3.2) | Veterinario (todo) + el dueño y sus co-tutores, en cualquier nivel (solo lectura) |
-| Cita / Calendario | Veterinario crea, en su propia clínica; el dueño y el co-tutor con edición confirman y reagendan | Veterinario + el dueño y sus co-tutores. Clínica_admin, **solo agregados** de su propia clínica (ver la nota de agregados de gestión) |
+| Cita / Calendario | Veterinario crea, en su propia clínica; el dueño y el co-tutor con edición confirman y reagendan. **Clínica_admin: solo la asignación de profesional**, sobre las citas de su clínica | Veterinario + el dueño y sus co-tutores + clínica_admin, sobre las citas de su propia clínica |
 | Adjuntos | Veterinario + el dueño y el co-tutor con edición. Cada uno retira los que subió | Veterinario + el dueño y sus co-tutores |
 | Dispositivo | Cada usuario los suyos (los registra al entrar y los da de baja al salir) | Cada usuario los suyos |
 | Notificación | Nadie: las escribe el proceso que las encola y las despacha | Nadie por API en el MVP: llegan como push, no se listan |
@@ -603,9 +603,17 @@ Cuándo un veterinario no está disponible para atender. Existe para que la gril
 
 > El rol clínica_admin gestiona veterinarios y datos administrativos de la clínica, y **no tiene acceso al historial clínico de ningún paciente**: ni al Evento clínico, ni a la Medicación, ni a los Adjuntos, ni a la ficha de un Paciente o de un Tutor. Ese acceso es del veterinario que atiende y del tutor.
 
-> **Agregados de gestión.** Lo que sí alcanza el clínica_admin, sobre su propia clínica, son **conteos**: cuántas Citas hay en la grilla y cuántas sin asignar, cuántas Consultas atendidas hubo por semana y por profesional, cuántos Vínculos con clínica están vigentes. La versión anterior de esta sección lo dejaba sin ninguna lectura y cerraba con "si el negocio requiere lo contrario, debe decidirse explícitamente antes de implementarlo". Se decidió: **un conteo sin `paciente_id` ni dato clínico no es historial clínico**, y negárselo dejaba al rol que administra la clínica sin poder saber si su propia agenda se está usando.
+> **La agenda es del libro de turnos, no del historial.** El clínica_admin lee las Citas de su clínica fila por fila —con la mascota, el tipo y quién atiende— y reparte las que no tienen profesional. Una Cita no lleva diagnóstico ni evolución: es cuándo viene quién, y atender esa pregunta es la tarea de quien administra la clínica.
 >
-> El límite es la forma del dato, no la entidad: la fila es un número y un corte (semana o mes, profesional, `origen`), nunca una lista de registros ni un identificador de mascota. Un endpoint que devuelva Citas o Consultas atendidas fila por fila sigue estando fuera del alcance de este rol, aunque las filas vengan recortadas — un listado de "atenciones del martes" con hora y profesional reconstruye quién fue atendido en cuanto se cruza con cualquier otra cosa. Es el mismo criterio con el que el Evento de telemetría (4.17) no lleva `paciente_id`.
+> Es un cambio respecto de la versión anterior de esta sección, que le daba **solo conteos** de Cita y dejaba escrito que "un endpoint que devuelva Citas fila por fila sigue estando fuera del alcance de este rol". Ese criterio trataba a la agenda como si fuera historial. El costo asumido y explícito es que "Luna, cirugía, martes 10:00" es información de salud de un paciente identificado, y queda alcanzada por el aviso de privacidad como el resto del padrón.
+>
+> Lo que **no** cambió: sigue sin alcanzar Evento clínico, Medicación, Adjuntos, ficha de Paciente ni ficha de Tutor. Y **no asienta la atención** (4.16), que es afirmación asistencial y la hace quien atendió.
+>
+> **De la Cita solo escribe la asignación.** Puede repartir y desasignar; no crea, no reagenda y no da de baja. Mover una cita de hora es una decisión clínica —hay que avisarle al tutor y ver si el turno sirve—, y repartir es organización del trabajo, que es lo suyo.
+
+> **Agregados de gestión.** Además de la agenda, el clínica_admin lee **conteos** sobre su propia clínica: cuántas Consultas atendidas hubo por semana y por profesional, cuántos Vínculos con clínica están vigentes. Se decidió que **un conteo sin `paciente_id` ni dato clínico no es historial clínico**, y negárselo dejaba al rol que administra la clínica sin poder saber si su propia agenda se está usando.
+>
+> Para Consulta atendida y Vínculo el límite sigue siendo la forma del dato: la fila es un número y un corte (semana o mes, profesional, `origen`), nunca una lista de registros ni un identificador de mascota. Un listado de "atenciones del martes" con hora y profesional reconstruye quién fue atendido en cuanto se cruza con cualquier otra cosa, y eso sigue afuera.
 >
 > Alcanza **solo a su propia clínica**, por `clínica_id`, como todo lo demás de este rol.
 
