@@ -582,10 +582,10 @@ Cuándo un veterinario no está disponible para atender. Existe para que la gril
 | Adjuntos | Veterinario + el dueño y el co-tutor con edición. Cada uno retira los que subió | Veterinario + el dueño y sus co-tutores |
 | Dispositivo | Cada usuario los suyos (los registra al entrar y los da de baja al salir) | Cada usuario los suyos |
 | Notificación | Nadie: las escribe el proceso que las encola y las despacha | Nadie por API en el MVP: llegan como push, no se listan |
-| Paciente (datos básicos) | Alta: el dueño, o un veterinario a nombre de un tutor. Edición de los datos no clínicos: el dueño, el co-tutor con edición y el veterinario de una clínica vinculada. `identificador_externo` (chip): solo el veterinario. Baja: solo el dueño | Veterinario de una clínica vinculada + el dueño y sus co-tutores. Clínica_admin: **solo la proyección de la cartera** (ver la nota) |
+| Paciente (datos básicos) | Alta: el dueño, o un veterinario **o el clínica_admin** a nombre de un tutor. Edición de los datos no clínicos: el dueño, el co-tutor con edición y el veterinario de una clínica vinculada. `identificador_externo` (chip): solo el veterinario. Baja: solo el dueño | Veterinario de una clínica vinculada + el dueño y sus co-tutores. Clínica_admin: **solo la proyección de la cartera** (ver la nota) |
 | Vínculo con clínica | Otorga y revoca: solo el dueño. Un veterinario puede desvincular su propia clínica | El dueño, sus co-tutores y los veterinarios de las clínicas vinculadas. Clínica_admin, **solo agregados** de su propia clínica |
 | Acceso de co-tutor, Invitación | Solo el dueño. El co-tutor puede renunciar al suyo | El dueño y sus co-tutores (los co-tutores, sin acciones) |
-| Tutor (ficha) | Veterinario de una clínica vinculada a esa ficha (alta y edición, incluido completar documento y dirección); el propio tutor sobre la suya, salvo el consentimiento | Búsqueda: cualquier veterinario. Ficha concreta: veterinario vinculado + el propio tutor. Clínica_admin sin acceso |
+| Tutor (ficha) | Veterinario de una clínica vinculada a esa ficha (alta y edición, incluido completar documento y dirección); el propio tutor sobre la suya, salvo el consentimiento. **Clínica_admin: solo el alta**, con nombre, contacto y consentimiento | Búsqueda: cualquier veterinario, con la ficha completa; el clínica_admin, **solo la proyección del padrón**. Ficha concreta: veterinario vinculado + el propio tutor |
 | Clínica (directorio) | Nadie por esta vía | Cualquier cuenta autenticada, con proyección reducida: es cómo el tutor elige con quién compartir |
 | Evento clínico, Medicación (acceso de clínica_admin) | Sin acceso | Sin acceso — reservado a veterinario y tutor |
 | Veterinario (ficha del plantel) | Clínica_admin, sobre el plantel de su propia clínica | Clínica_admin (edita) + Veterinario de la misma clínica (solo lectura). Tutor sin acceso |
@@ -602,6 +602,12 @@ Cuándo un veterinario no está disponible para atender. Existe para que la gril
 > El alcance del veterinario sobre la ficha de Tutor no está acotado a su clínica, a diferencia del que tiene sobre Paciente. El motivo es el proceso de alta de paciente (Reglas de Negocio, 4.1): la ficha del tutor se busca y se completa antes de que exista ningún Paciente que vincule a esa persona con una clínica, así que no hay dato sobre el cual acotarla. Es una excepción deliberada, a revisar cuando exista la entidad Paciente.
 
 > El rol clínica_admin gestiona veterinarios y datos administrativos de la clínica, y **no tiene acceso al historial clínico de ningún paciente**: ni al Evento clínico, ni a la Medicación, ni a los Adjuntos, ni a la ficha de un Paciente o de un Tutor. Ese acceso es del veterinario que atiende y del tutor.
+
+> **El padrón también es una proyección.** Dar de alta una mascota exige encontrar a su tutor o crearlo (Reglas de Negocio, 4.1), y para eso el clínica_admin busca en el padrón entero —igual que el veterinario, y por el mismo motivo: antes del alta no hay vínculo contra el cual acotar—. Lo que ve de cada persona es **nombre, contacto y si ya tiene documento cargado**; no el documento ni la dirección.
+>
+> Es la proyección reducida que esta sección ya tenía anotada como pendiente para la búsqueda del veterinario. Se implementa primero acá porque es el rol que se está abriendo ahora; la del veterinario sigue devolviendo la ficha completa y sigue siendo deuda.
+>
+> Del alta escribe **nombre, contacto y consentimiento**, que es lo que el auto-registro también pide. Documento y dirección los completa el veterinario cuando atiende (3.2).
 
 > **La cartera es una proyección, no la ficha.** Para agendar hay que elegir una mascota, y el clínica_admin no lee Paciente. Lo que sí alcanza es una lista acotada a la cartera de su propia clínica con **nombre, especie, y el nombre y contacto de su tutor** — lo justo para tomar un turno por teléfono y saber a quién llamar. Ni fecha de nacimiento, ni sexo, ni peso, ni chip, ni nada que cuelgue de la mascota.
 >

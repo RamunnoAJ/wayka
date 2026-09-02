@@ -185,7 +185,13 @@ Sobre la ficha de Tutor (distinta de la cuenta de Usuario del tutor), el alcance
 |---|---|
 | Veterinario | **Busca** sin acotar (ver nota abajo). Para **leer, editar o dar de baja** una ficha concreta necesita un vínculo con su clínica: que el tutor sea dueño o co-tutor vigente de al menos un Paciente vinculado a esa clínica, o que la ficha la haya creado esa misma clínica (`clínica_de_origen_id`). |
 | Tutor | Solo alcanza su propia ficha, vía el tutor_id de su Usuario: puede leerla y editar nombre, contacto, dirección y documento. No puede darla de baja — la baja la decide la clínica, que es quien tiene Pacientes vinculados a ella — ni revocar su consentimiento por esta vía. |
-| Clínica_admin | Sin acceso a fichas de Tutor: su rol alcanza datos administrativos (Veterinarios y Clínica), no las personas atendidas. |
+| Clínica_admin | **Busca en el padrón en proyección reducida** —nombre, contacto y si ya tiene documento cargado— y **da de alta una ficha** con nombre, contacto y consentimiento. No abre la ficha completa, no ve documento ni dirección, no edita lo ya cargado y no da de baja. |
+
+> **La búsqueda del padrón no se acota por clínica, y con el clínica_admin pasa lo mismo que con el veterinario**: antes del alta no hay ningún vínculo contra el cual acotarla. Lo que cambia es la proyección — el admin ve lo justo para reconocer a la persona que llama y decidir si ya está: nombre, cómo contactarla, y si la ficha está completa o le falta el documento.
+>
+> Es la proyección reducida que esta misma sección tiene anotada como **pendiente** para la búsqueda del veterinario. Se implementa primero para el rol que se está abriendo ahora; la del veterinario sigue devolviendo la ficha completa y la deuda sigue abierta.
+>
+> Del alta escribe **nombre, contacto y consentimiento**, lo mismo que pide el auto-registro (4.9). Documento y dirección los completa el veterinario cuando atiende, que es cuando los tiene delante.
 
 Sobre el Paciente, el alcance se resuelve así:
 
@@ -195,7 +201,7 @@ Sobre el Paciente, el alcance se resuelve así:
 | Tutor **dueño** | Sus mascotas, estén atendidas por las clínicas que sea o por ninguna. Da de alta, lee, edita todos los datos no clínicos, gestiona las citas y los adjuntos, da de baja, y **administra los accesos**: comparte con clínicas, invita co-tutores, les cambia el nivel y los revoca. |
 | Tutor **co-tutor con edición** | Todo lo del dueño **salvo administrar**: no invita, no revoca, no cambia niveles y no da de baja la mascota. Sí lee el historial completo, edita los datos no clínicos, reagenda y retira citas, y sube adjuntos. |
 | Tutor **co-tutor con lectura** | Mira. El historial, la medicación, las citas y los adjuntos de esa mascota, sin escribir nada — ni el peso. |
-| Clínica_admin | **Solo la cartera, y en proyección reducida**: busca y lista las mascotas con vínculo vigente con su clínica, y de cada una ve nombre, especie y el nombre y contacto de su tutor. No abre la ficha, no lee el historial ni la medicación, no edita nada y no da de alta ni de baja. |
+| Clínica_admin | **La cartera en proyección reducida** —nombre, especie y a quién llamar— y el **alta a nombre de un tutor**, que vincula su clínica en la misma operación (proceso 4.1). No abre la ficha, no lee el historial ni la medicación, no edita lo ya cargado y no da de baja. El chip sigue siendo del veterinario. |
 
 > **La cartera es una proyección, no la ficha.** Existe porque agendar exige elegir una mascota, y sin poder nombrarla el mostrador no puede tomar un turno. Lo que protege el dato no es el alcance sino la proyección, con el mismo criterio que el directorio de Clínicas que lee el tutor (3.2): salen nombre, especie y a quién llamar, y nada que cuelgue de la mascota — ni fecha de nacimiento, ni sexo, ni peso, ni chip.
 >
@@ -338,11 +344,13 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 
 ### 4.1 Alta de paciente
 
-1. El Veterinario (o clínica_admin, solo para datos administrativos) inicia el alta.
-2. El Veterinario busca la ficha del Tutor antes de crearla: por el par (tipo_documento, número_documento) si lo conoce, o por coincidencia parcial de nombre o contacto. Buscar por contacto es lo que permite encontrar la ficha de un tutor que ya se auto-registró, porque esa ficha se crea sin documento (4.9) y su contacto es el email del registro.
-3. Si el Tutor no existe en el sistema, se crea primero — valida número_documento único (regla 2.1) y exige consentimiento_datos = true. La ficha queda con `clínica_de_origen_id` = la clínica del veterinario, que es lo que la pone a su alcance antes de que exista el Paciente.
+1. El Veterinario **o el clínica_admin** inicia el alta. Los dos pueden: el mostrador toma al cliente nuevo que llama, y esperar al veterinario para poder darle un turno no es una división que se pueda explicar en la recepción.
+2. Se busca la ficha del Tutor antes de crearla: por el par (tipo_documento, número_documento) si lo conoce, o por coincidencia parcial de nombre o contacto. Buscar por contacto es lo que permite encontrar la ficha de un tutor que ya se auto-registró, porque esa ficha se crea sin documento (4.9) y su contacto es el email del registro.
+3. Si el Tutor no existe en el sistema, se crea primero — valida número_documento único (regla 2.1) y exige consentimiento_datos = true. La ficha queda con `clínica_de_origen_id` = la clínica de quien da el alta, que es lo que la pone a su alcance antes de que exista el Paciente.
+   - El clínica_admin la crea con **nombre, contacto y consentimiento**; documento y dirección los completa el veterinario cuando atiende, que es cuando los tiene delante. Es la misma ficha incompleta con la que nace un auto-registro (4.9).
 4. Se valida consentimiento_datos = true del Tutor (regla 2.2). Si no existe, se solicita antes de continuar.
-5. Se crea el Paciente con `tutor_id` = el Tutor buscado o creado, que queda como **dueño**, y en la misma transacción el **vínculo con la clínica** del veterinario que realiza el alta (`origen = alta_de_la_clínica`).
+5. Se crea el Paciente con `tutor_id` = el Tutor buscado o creado, que queda como **dueño**, y en la misma transacción el **vínculo con la clínica** de quien realiza el alta (`origen = alta_de_la_clínica`).
+   - El **chip** (`identificador_externo`) no entra en el alta del clínica_admin: lo carga el veterinario, que es quien lo implanta y lo lee (3.2).
 6. Se registra la creación en Auditoría automáticamente (entidad_tipo = "Paciente", acción = "creación"), y también el vínculo.
 
 > El vínculo se crea en la misma transacción que la ficha, y no como un segundo paso: un Paciente que existe pero que ninguna clínica alcanza es una mascota que el veterinario acaba de cargar y no puede ver.
