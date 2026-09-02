@@ -39,6 +39,9 @@ Paciente
                           └── clínica_id (quién la atiende)
 
 Veterinario N───1 Clínica
+Veterinario 1───N Ausencia del profesional  (cuándo no está disponible)
+
+Clínica 1───N Franja de atención  (la grilla, por día de la semana)
 
 Usuario N───1 Tutor  (si tipo_usuario = tutor)
 Usuario N───1 Veterinario  (si tipo_usuario = veterinario)
@@ -55,7 +58,7 @@ Evento de telemetría N───1 Usuario  (nullable: los que emite el sistema n
 
 ## 3. Campos transversales
 
-Los siguientes tres campos están presentes en todas las entidades principales (Tutor, Paciente, Clínica, Veterinario, Usuario, Evento clínico, Medicación, Cita, Consulta atendida, Adjuntos):
+Los siguientes tres campos están presentes en todas las entidades principales (Tutor, Paciente, Clínica, Veterinario, Usuario, Evento clínico, Medicación, Cita, Consulta atendida, Adjuntos, Ausencia del profesional):
 
 | Campo | Tipo | Descripción |
 |---|---|---|
@@ -143,16 +146,14 @@ Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No e
 | nombre | string | — |
 | dirección + dirección_place_id + dirección_lat + dirección_lng | ver 3.1 | Domicilio de la clínica, opcionalmente confirmado en el mapa. `dirección` es obligatoria: una clínica sin dirección no se puede visitar. |
 | contacto | string | — |
-| hora_apertura | time | Hora a la que la clínica empieza a atender. |
-| hora_cierre | time | Hora a la que deja de atender. Posterior a `hora_apertura`. |
-| duración_turno_minutos | int | Largo del turno con el que se agenda. Define la grilla del calendario. |
+| duración_turno_minutos | int | Largo del turno con el que se agenda. Junto con las Franjas de atención (4.18) define la grilla del calendario. |
 | zona_horaria | string | Zona IANA en la que se interpretan el horario de atención y la hora de las Citas. Por defecto `America/Argentina/Buenos_Aires`. |
 
-> Los tres campos de agenda entraron después de la primera versión de esta tabla, junto con la decisión de darle hora a la Cita (4.7): sin ellos, una cita con hora se puede agendar a cualquier minuto de cualquier momento del día, y el calendario deja de ser una grilla para pasar a ser una lista de instantes sueltos.
+> Los campos de agenda entraron después de la primera versión de esta tabla, junto con la decisión de darle hora a la Cita (4.7): sin ellos, una cita con hora se puede agendar a cualquier minuto de cualquier momento del día, y el calendario deja de ser una grilla para pasar a ser una lista de instantes sueltos.
 >
-> `hora_apertura` y `hora_cierre` son un **único intervalo para toda la semana**, no un horario por día ni con corte de mediodía. Es la simplificación deliberada del MVP: un horario por día multiplica por siete la configuración, y con una sola clínica piloto todavía no hay evidencia de que haga falta. El día que la haya, este es el campo que se promueve a una tabla de franjas — no un campo al que se le agregan casos especiales.
+> **`hora_apertura` y `hora_cierre` ya no están acá**: se promovieron a la Franja de atención (4.18). Eran un único intervalo para toda la semana —la simplificación deliberada de la primera versión—, y esta tabla anticipaba que el día que hiciera falta un horario por día "este es el campo que se promueve a una tabla de franjas, no un campo al que se le agregan casos especiales". Eso es lo que pasó: la promoción es lo que permite el **día cerrado** (un día sin ninguna franja) y el **corte de mediodía** (dos franjas el mismo día), que con un intervalo único no se podían expresar de ninguna manera.
 >
-> `duración_turno_minutos` es de la Clínica y no del Veterinario porque en el MVP la agenda es de la clínica: no hay agenda por profesional (ver la nota de 4.7 sobre por qué la Cita no lleva `veterinario_id`). Debe ser mayor a cero y dividir de forma exacta el intervalo de atención, o la grilla deja un hueco al final del día.
+> `duración_turno_minutos` **se queda en la Clínica**, y no bajó a la franja. El turno es cuánto dura atender a un paciente en esa clínica, y eso no cambia porque sea martes a la mañana o jueves a la tarde. Es de la Clínica y no del Veterinario porque la agenda es de la clínica: no hay agenda por profesional (ver la nota de 4.7 sobre qué significa `veterinario_id` en la Cita). Debe ser mayor a cero y dividir de forma exacta **cada franja**, no el día entero — una franja que no cierra en un múltiplo del turno deja un hueco al final que no se puede agendar.
 >
 > `zona_horaria` entró después de que el cliente y el backend tuvieran la zona escrita a mano cada uno por su lado. Es un dato de la clínica y no una constante del sistema: `hora_apertura` dice "09:00" sin decir 09:00 de dónde, y esa pregunta la contesta la clínica, no el despliegue. Mientras estuvo hardcodeada, además, no había forma de que el cliente supiera qué zona usar salvo repetir la constante y confiar en que nadie la cambiara de un solo lado.
 >
@@ -247,7 +248,7 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 | paciente_id | UUID / FK | — |
 | clínica_id | UUID / FK | La clínica que atiende esta cita. Fija desde el alta. |
 | tipo | enum | Próxima vacuna / control / cirugía programada. |
-| fecha_programada | timestamp | Momento de la cita, con hora. Cae dentro del horario de atención de la clínica y sobre la grilla de turnos (4.3). |
+| fecha_programada | timestamp | Momento de la cita, con hora. Cae dentro de alguna Franja de atención de la clínica (4.18) y sobre la grilla de turnos que esa franja define con `duración_turno_minutos` (4.3). |
 | veterinario_id | UUID / FK (nullable) | Profesional que va a atender. NULL cuando la cita es de la clínica y todavía no se repartió. |
 | estado | enum | Pendiente / cumplido / vencido. |
 | notificar_tutor | boolean | Dispara notificación al tutor. |
@@ -524,17 +525,65 @@ Qué hace la gente con el producto. Es el registro que sostiene las métricas de
 
 > No lleva `deleted_at` ni se audita, con el mismo criterio que Notificación (4.12): es un registro operativo, nadie lo edita nunca y su única baja es la del plazo de retención — que es física, y es la única excepción del proyecto al "nunca borrado físico" (Telemetría de Producto, 8).
 
+### 4.18 Franja de atención
+
+Cuándo atiende la clínica. Es lo que, junto con `duración_turno_minutos` (4.3), produce la grilla sobre la que se agenda.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| id | UUID / PK | Identificador único. |
+| clínica_id | UUID / FK | La clínica que atiende en esta franja. |
+| día_semana | int (0–6) | Día al que aplica. 0 = lunes. |
+| hora_desde | time | Hora a la que empieza a atender. |
+| hora_hasta | time | Hora a la que deja de atender. Posterior a `hora_desde`. |
+
+> **Un día sin ninguna franja es un día cerrado.** No hay un campo `cerrado`: la ausencia de filas ya lo dice, y un booleano que pudiera contradecir a las franjas del mismo día sería un dato que hay que mantener coherente a mano. Es también la única forma de expresar que la clínica no abre el domingo, que con el intervalo único de la primera versión era imposible.
+
+> **Dos franjas el mismo día son el corte de mediodía.** No se solapan entre sí ni se tocan: dos franjas contiguas —09:00–13:00 y 13:00–18:00— son una sola franja escrita en dos filas, y se rechazan al guardar. Lo que hace que dos filas signifiquen algo distinto de una es el hueco entre ellas.
+
+> **Se escriben como un conjunto, no de a una.** Guardar el horario reemplaza las franjas de la clínica entera en una transacción: la grilla es una sola cosa y hay que poder validarla completa —que ninguna se solape, que `duración_turno_minutos` divida a cada una— antes de aceptarla. Una API que agregue y borre franjas sueltas deja pasar estados intermedios inválidos, y obliga a decidir qué hacer con las Citas en cada paso en vez de una vez.
+
+> **No lleva `deleted_at` ni se audita.** Es configuración de la clínica, no un registro del dominio clínico: nadie consulta cuál era el horario en marzo, y su baja es que la próxima escritura del conjunto no la incluya. Lo que sí queda auditado es el efecto — achicar el horario no puede dejar Citas pendientes afuera (Reglas de Negocio, 2.2), así que no hay Citas silenciosamente huérfanas de grilla.
+
+> **Las horas se leen en la `zona_horaria` de la clínica** (4.3), igual que la Cita y la Consulta atendida. `hora_desde` dice "09:00" sin decir 09:00 de dónde, y esa pregunta la sigue contestando la clínica.
+
+> **La migración desde el intervalo único escribe siete franjas idénticas por clínica**, una por día, con la `hora_apertura` y la `hora_cierre` que esa clínica tenía. Es la lectura literal de lo que el modelo viejo afirmaba —atiende todos los días en ese horario— y deja la grilla y las Citas existentes exactamente donde estaban. Cerrar el domingo es una edición que la clínica hace después, no algo que la migración pueda adivinar por ella.
+
+### 4.19 Ausencia del profesional
+
+Cuándo un veterinario no está disponible para atender. Existe para que la grilla no ofrezca a quien no va a estar.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| id | UUID / PK | Identificador único. |
+| veterinario_id | UUID / FK | Quién no está. |
+| desde | timestamp | Comienzo de la ausencia. |
+| hasta | timestamp | Fin de la ausencia. Posterior a `desde`. |
+| registrada_por_usuario_id | UUID / FK | El clínica_admin que la cargó. |
+
+> **No tiene campo `motivo`, ni libre ni enum.** "Licencia médica" sobre una persona identificada es dato de salud de un empleado, y la Ley 25.326 lo trata como dato sensible: guardarlo abriría una obligación que esta funcionalidad no necesita para nada. Para que la grilla no ofrezca a quien no está alcanza con el rango de fechas. El motivo lo sabe quien lo tiene que saber, por el canal por el que siempre lo supo.
+
+> **Es un rango con hora, no un día.** Una ausencia de media tarde y una de dos semanas son la misma fila con distintos extremos. Un campo de fecha suelta obligaría a inventar un booleano de "día completo" y a decidir qué significa media jornada.
+
+> **La carga la hace el clínica_admin**, sobre el plantel de su propia clínica (Reglas de Negocio, 3.2). El veterinario las lee —son su propia agenda— y no las escribe, con el mismo criterio por el que no se edita su ficha ni se da de alta: eso es administrar la clínica. Por `registrada_por_usuario_id` se sabe quién la cargó sin necesidad de una entrada de Auditoría.
+
+> **Cargarla desasigna las Citas que caen adentro** (Reglas de Negocio, 4.22): quedan con `veterinario_id` en NULL, que es un estado que la Cita ya tenía (4.7), y aparecen en la lista de lo que hay que repartir. La ausencia se guarda siempre. Impedir registrar que alguien no vino a trabajar no hace que haya venido, y el día que hace falta cargarla rápido es justo el día en que nadie tiene tiempo de reasignar seis turnos primero.
+
+> **No cascadea ni se propaga hacia atrás.** No toca las Consultas atendidas ya asentadas: si el sistema dice que esa persona atendió el martes, la ausencia cargada después no lo desmiente — lo que hay ahí es un error de carga en uno de los dos, y se corrige el que esté mal.
+
+> **Su baja es lógica** (`deleted_at`), a diferencia de la Franja: una ausencia cargada por error tuvo un efecto sobre las Citas, y ese efecto sí quedó en la Auditoría de cada Cita desasignada. Dar de baja la ausencia **no reasigna nada**: las citas siguen sin profesional y se reparten como cualquier otra. Devolverlas automáticamente a quien las tenía sería adivinar que nadie las movió mientras tanto.
+
 ## 5. Matriz de permisos
 
 | Entidad | Quién escribe | Quién lee |
 |---|---|---|
 | Evento clínico, Medicación | Solo veterinario, sobre los pacientes vinculados a su clínica: cualquiera del plantel edita y da de baja, no solo el autor (Reglas de Negocio, 3.2) | Veterinario (todo) + el dueño y sus co-tutores, en cualquier nivel (solo lectura) |
-| Cita / Calendario | Veterinario crea, en su propia clínica; el dueño y el co-tutor con edición confirman y reagendan | Veterinario + el dueño y sus co-tutores |
+| Cita / Calendario | Veterinario crea, en su propia clínica; el dueño y el co-tutor con edición confirman y reagendan | Veterinario + el dueño y sus co-tutores. Clínica_admin, **solo agregados** de su propia clínica (ver la nota de agregados de gestión) |
 | Adjuntos | Veterinario + el dueño y el co-tutor con edición. Cada uno retira los que subió | Veterinario + el dueño y sus co-tutores |
 | Dispositivo | Cada usuario los suyos (los registra al entrar y los da de baja al salir) | Cada usuario los suyos |
 | Notificación | Nadie: las escribe el proceso que las encola y las despacha | Nadie por API en el MVP: llegan como push, no se listan |
 | Paciente (datos básicos) | Alta: el dueño, o un veterinario a nombre de un tutor. Edición de los datos no clínicos: el dueño, el co-tutor con edición y el veterinario de una clínica vinculada. `identificador_externo` (chip): solo el veterinario. Baja: solo el dueño | Veterinario de una clínica vinculada + el dueño y sus co-tutores. Clínica_admin sin acceso |
-| Vínculo con clínica | Otorga y revoca: solo el dueño. Un veterinario puede desvincular su propia clínica | El dueño, sus co-tutores y los veterinarios de las clínicas vinculadas |
+| Vínculo con clínica | Otorga y revoca: solo el dueño. Un veterinario puede desvincular su propia clínica | El dueño, sus co-tutores y los veterinarios de las clínicas vinculadas. Clínica_admin, **solo agregados** de su propia clínica |
 | Acceso de co-tutor, Invitación | Solo el dueño. El co-tutor puede renunciar al suyo | El dueño y sus co-tutores (los co-tutores, sin acciones) |
 | Tutor (ficha) | Veterinario de una clínica vinculada a esa ficha (alta y edición, incluido completar documento y dirección); el propio tutor sobre la suya, salvo el consentimiento | Búsqueda: cualquier veterinario. Ficha concreta: veterinario vinculado + el propio tutor. Clínica_admin sin acceso |
 | Clínica (directorio) | Nadie por esta vía | Cualquier cuenta autenticada, con proyección reducida: es cómo el tutor elige con quién compartir |
@@ -543,14 +592,22 @@ Qué hace la gente con el producto. Es el registro que sostiene las métricas de
 | Usuario (cuentas de veterinario) | Clínica_admin, sobre las cuentas de su propia clínica | Clínica_admin (las de su clínica) + el propio usuario sobre su cuenta |
 | Usuario (cuenta propia) | Cada usuario sobre su email y su contraseña | Cada usuario sobre su cuenta |
 | Usuario (cuentas de tutor) | Solo el propio tutor (auto-registro) | Solo el propio tutor |
-| Clínica (datos administrativos y horario de atención) | Alta: administrador de la plataforma, fuera de la API. Edición: clínica_admin sobre su propia clínica | Clínica_admin sobre su propia clínica. Veterinario de esa clínica, solo lectura: necesita el horario de atención para agendar |
+| Clínica (datos administrativos) | Alta: administrador de la plataforma, fuera de la API. Edición: clínica_admin sobre su propia clínica | Clínica_admin sobre su propia clínica. Veterinario de esa clínica, solo lectura |
+| Franja de atención | Clínica_admin sobre su propia clínica, escribiendo el conjunto completo | Clínica_admin sobre su propia clínica. Veterinario de esa clínica, solo lectura: sin la grilla no puede saber qué horas son válidas |
+| Ausencia del profesional | Clínica_admin, sobre el plantel de su propia clínica | Clínica_admin (las de su clínica) + Veterinario de esa clínica, solo lectura |
 | Usuario (cuentas de clínica_admin) | Administrador de la plataforma, fuera de la API | Clínica_admin sobre su propia cuenta |
-| Consulta atendida | Solo el veterinario, sobre los pacientes vinculados a su clínica: asienta, corrige y da de baja. El sistema, cuando la deduce de un Evento clínico con cita | Veterinario de la clínica que atendió. Clínica_admin, tutor y co-tutores sin acceso |
+| Consulta atendida | Solo el veterinario, sobre los pacientes vinculados a su clínica: asienta, corrige y da de baja. El sistema, cuando la deduce de un Evento clínico con cita | Veterinario de la clínica que atendió. Clínica_admin, **solo agregados** de su propia clínica. Tutor y co-tutores sin acceso |
 | Evento de telemetría | Cada usuario, solo los suyos, por la ruta de ingesta; y el backend, para lo que emite él | Nadie por API en el MVP: se consulta por SQL (Telemetría de Producto, 6) |
 
 > El alcance del veterinario sobre la ficha de Tutor no está acotado a su clínica, a diferencia del que tiene sobre Paciente. El motivo es el proceso de alta de paciente (Reglas de Negocio, 4.1): la ficha del tutor se busca y se completa antes de que exista ningún Paciente que vincule a esa persona con una clínica, así que no hay dato sobre el cual acotarla. Es una excepción deliberada, a revisar cuando exista la entidad Paciente.
 
-> El rol clínica_admin gestiona veterinarios y datos administrativos de la clínica, pero no tiene acceso al historial clínico de pacientes por defecto — ese acceso permanece exclusivo del veterinario que atiende al paciente y del tutor. Si el negocio requiere lo contrario, debe decidirse explícitamente antes de implementarlo.
+> El rol clínica_admin gestiona veterinarios y datos administrativos de la clínica, y **no tiene acceso al historial clínico de ningún paciente**: ni al Evento clínico, ni a la Medicación, ni a los Adjuntos, ni a la ficha de un Paciente o de un Tutor. Ese acceso es del veterinario que atiende y del tutor.
+
+> **Agregados de gestión.** Lo que sí alcanza el clínica_admin, sobre su propia clínica, son **conteos**: cuántas Citas hay en la grilla y cuántas sin asignar, cuántas Consultas atendidas hubo por semana y por profesional, cuántos Vínculos con clínica están vigentes. La versión anterior de esta sección lo dejaba sin ninguna lectura y cerraba con "si el negocio requiere lo contrario, debe decidirse explícitamente antes de implementarlo". Se decidió: **un conteo sin `paciente_id` ni dato clínico no es historial clínico**, y negárselo dejaba al rol que administra la clínica sin poder saber si su propia agenda se está usando.
+>
+> El límite es la forma del dato, no la entidad: la fila es un número y un corte (semana o mes, profesional, `origen`), nunca una lista de registros ni un identificador de mascota. Un endpoint que devuelva Citas o Consultas atendidas fila por fila sigue estando fuera del alcance de este rol, aunque las filas vengan recortadas — un listado de "atenciones del martes" con hora y profesional reconstruye quién fue atendido en cuanto se cruza con cualquier otra cosa. Es el mismo criterio con el que el Evento de telemetría (4.17) no lleva `paciente_id`.
+>
+> Alcanza **solo a su propia clínica**, por `clínica_id`, como todo lo demás de este rol.
 
 ## 6. Preparado para Fase 2
 

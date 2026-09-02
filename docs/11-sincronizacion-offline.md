@@ -153,7 +153,7 @@ La granularidad es **por registro, no por campo**. Con la mascota compartida hay
 
 **La reagenda de una Cita no se puede resolver en el cliente por definición.** Cambiar `fecha_programada` exige que la hora caiga en el horario de atención de la clínica, esté alineada a la grilla de turnos, no le solape otra cita al profesional asignado y la cita siga pendiente (Reglas de Negocio, 2.2 y 4.6). Las tres primeras dependen de datos que pudieron cambiar mientras el dispositivo no tenía señal: el turno que el tutor eligió puede haberse ocupado. El cliente valida lo que puede para no ofrecer horarios obviamente inválidos, pero eso es UX; la respuesta real llega al sincronizar.
 
-**Un rechazo por agenda devuelve hasta tres horarios alternativos**, los libres más cercanos al que se pidió, ya validados contra el horario de atención, la grilla de turnos y la ocupación del profesional asignado.
+**Un rechazo por agenda devuelve hasta tres horarios alternativos**, los libres más cercanos al que se pidió, ya validados contra las franjas de atención, la grilla de turnos, la ocupación del profesional asignado y sus ausencias.
 
 > Es la diferencia entre "no se pudo" y "no se pudo, pero tenés estos tres". Sin las alternativas, el tutor que reagendó sin señal vuelve a una pantalla que le pide adivinar, y adivina contra un calendario que su dispositivo tiene desactualizado — que es exactamente la situación que produjo el rechazo. El cálculo lo hace el servidor porque es el único que conoce la agenda real, y devolverlo en la misma respuesta evita un segundo viaje en el peor momento posible para pedirlo.
 >

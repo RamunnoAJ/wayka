@@ -43,16 +43,22 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Consulta vigente y del mismo paciente | Evento clínico | El evento se guarda con `consulta_id` y ya no con una FK propia a la Cita (Modelo de Datos, 4.5). Si trae `consulta_id`, la consulta tiene que ser del mismo Paciente y estar vigente. Si en cambio declara la cita que cumple, se resuelve a la consulta de esa cita — y si trae las dos, tienen que ser la misma. |
 | Una medicación activa por droga | Medicación | No se permite crear una nueva Medicación con fecha_fin NULL para una droga que el paciente ya tiene activa. Debe cerrarse la anterior (fecha_fin) antes de abrir una nueva. |
 | Zona horaria válida | Clínica | zona_horaria tiene que ser un nombre IANA que el sistema pueda resolver. Una zona que no existe deja el horario de atención sin significado: "abre 09:00" no dice nada si no se sabe 09:00 de dónde. |
-| Horario de atención coherente | Clínica | hora_cierre tiene que ser posterior a hora_apertura. No se admite un horario que cruce la medianoche: una guardia nocturna es un caso que el MVP no modela, y aceptarlo acá lo haría parecer soportado. |
-| Turno que divide el horario | Clínica | duración_turno_minutos tiene que ser mayor a cero y dividir de forma exacta el intervalo entre apertura y cierre. Si no divide, el último turno del día queda cortado por el cierre y la grilla miente sobre cuántos turnos entran. |
-| Horario que no invalida lo agendado | Clínica | Achicar el horario de atención o cambiar la duración del turno **no reagenda ni cancela** las Citas pendientes que quedan fuera del horario nuevo. Se rechaza el cambio mientras existan: mover la agenda de una mascota es una decisión clínica, no un efecto colateral de editar la configuración de la clínica. |
+| Franja coherente | Franja de atención | `hora_hasta` tiene que ser posterior a `hora_desde`. No se admite una franja que cruce la medianoche: una guardia nocturna es un caso que el MVP no modela, y aceptarlo acá lo haría parecer soportado. Un día de la semana **sin ninguna franja es un día cerrado**, y es válido: es como se expresa que la clínica no abre el domingo. |
+| Franjas que no se solapan ni se tocan | Franja de atención | Dos franjas del mismo día no pueden superponerse, ni terminar donde empieza la siguiente. 09:00–13:00 y 13:00–18:00 son una sola franja escrita en dos filas y se rechazan: lo que hace que dos filas signifiquen algo distinto de una es el hueco entre ellas — el corte de mediodía. |
+| El horario se escribe entero | Franja de atención | La escritura reemplaza el conjunto completo de franjas de la clínica en una transacción, y se valida completo antes de aceptarse. No hay alta ni baja de una franja suelta: la grilla es una sola cosa, y aceptarla por partes deja pasar estados intermedios inválidos. |
+| Turno que divide cada franja | Clínica, Franja de atención | `duración_turno_minutos` tiene que ser mayor a cero y dividir de forma exacta **cada una** de las franjas de la clínica. Si no divide, el último turno de esa franja queda cortado por su cierre y la grilla miente sobre cuántos turnos entran. Se valida en las dos direcciones: al escribir las franjas y al cambiar la duración del turno. |
+| Horario que no invalida lo agendado | Clínica, Franja de atención | Achicar una franja, borrarla (cerrar el día) o cambiar la duración del turno **no reagenda ni cancela** las Citas pendientes que quedan fuera de la grilla nueva. Se rechaza el cambio mientras existan, y el rechazo dice cuáles son: mover la agenda de una mascota es una decisión clínica, no un efecto colateral de editar la configuración de la clínica. Es la diferencia con la Ausencia (4.22), que sí desasigna — ahí lo que se pierde es quién atiende, acá se perdería el turno entero. |
 | Consentimiento previo a alta de paciente | Tutor, Paciente | No se puede dar de alta un Paciente si el Tutor asociado no tiene consentimiento_datos = true. |
 | Momento no pasado | Cita | fecha_programada no puede ser anterior al momento actual, ni al crear ni al reagendar. Es la regla espejo del Evento clínico: lo que ya ocurrió se registra como evento, lo que va a ocurrir se agenda como cita. Una cita creada en el pasado nacería vencida. Ahora que `fecha_programada` lleva hora, la comparación es contra el instante y no contra el día: agendar hoy a las 09:00 cuando son las 15:00 se rechaza. |
-| Dentro del horario de atención | Cita | fecha_programada, leída en la `zona_horaria` de **la clínica de la cita**, tiene que caer entre `hora_apertura` y `hora_cierre`, y el turno completo (`duración_turno_minutos`) tiene que terminar antes del cierre. Una cita fuera del horario no la puede atender nadie. |
+| Dentro de una franja de atención | Cita | `fecha_programada`, leída en la `zona_horaria` de **la clínica de la cita**, tiene que caer dentro de **alguna** franja del día de la semana que le toca, y el turno completo (`duración_turno_minutos`) tiene que terminar antes del cierre de **esa misma** franja. Un turno que empieza a las 12:45 con la franja cerrando 13:00 se rechaza aunque a las 13:00 empiece otra: el corte de mediodía es un hueco, no una pausa que el turno pueda atravesar. Un día sin franjas no admite citas. |
 | Un profesional no se duplica | Cita | Un mismo veterinario no puede tener dos Citas **pendientes** en el mismo momento. Es la regla que hace que asignar profesional signifique algo: sin ella la asignación es una etiqueta y la agenda vuelve a mentir sobre quién está libre. Las citas sin asignar no colisionan entre sí — sin profesional no hay a quién solapar. Una cita cumplida o vencida tampoco bloquea: ya pasó. |
 | El profesional atiende en esa clínica | Cita | `veterinario_id`, si viene, tiene que ser de un veterinario vigente de **la clínica de la cita**. Asignarle una cita a alguien de otra clínica sería agendarle trabajo a quien no atiende ahí. |
+| El profesional está disponible | Cita | No se asigna una Cita a un veterinario que tiene una Ausencia vigente (Modelo de Datos, 4.19) cubriendo ese momento. Es la misma familia que "un profesional no se duplica": asignar trabajo a quien no va a estar hace que la agenda mienta sobre quién está libre. La cita se agenda igual **sin profesional** — que no haya nadie disponible no es motivo para no tomar el turno. |
+| Una ausencia por vez | Ausencia del profesional | Dos ausencias vigentes del mismo veterinario no pueden solaparse. Dos filas para el mismo rango no significan nada distinto de una, y dejan sin respuesta cuál se da de baja para volver a estar disponible. |
+| Rango de ausencia coherente | Ausencia del profesional | `hasta` tiene que ser posterior a `desde`. Se admite una ausencia que empieza en el pasado: alguien que no vino ayer no vino ayer, y cargarlo hoy es lo normal. |
+| Ausencia sobre el propio plantel | Ausencia del profesional | El veterinario tiene que pertenecer a la clínica del clínica_admin que la carga, y estar vigente. Se resuelve contra el actor, no se recibe por la API. |
 | Cita en una clínica vinculada | Cita | La clínica de la cita tiene que tener vínculo vigente con el paciente al momento de agendar (Modelo de Datos, 4.13). Se resuelve contra el actor, no se recibe por la API: una cita nace en la clínica del veterinario que la agenda. Una mascota que el tutor todavía no compartió con nadie no admite citas, y el rechazo lo dice así — no es una falta de permiso, es que no hay agenda donde ponerla. |
-| Alineada a la grilla de turnos | Cita | La hora de fecha_programada tiene que ser múltiplo del `duración_turno_minutos` de **la clínica de la cita**, contado desde su `hora_apertura`. Con turnos de 30 min y apertura a las 09:00, valen 09:00, 09:30, 10:00…; 09:17 se rechaza. Sin esta regla los turnos se solapan de a poco y la grilla del calendario deja de representar la agenda real. |
+| Alineada a la grilla de turnos | Cita | La hora de `fecha_programada` tiene que ser múltiplo del `duración_turno_minutos` de **la clínica de la cita**, contado desde el `hora_desde` de **la franja en la que cae**. Con turnos de 30 min y una franja que abre 09:00, valen 09:00, 09:30, 10:00…; 09:17 se rechaza. Cada franja empieza a contar de nuevo desde su propio comienzo — es lo que hace que una franja de tarde que abre a las 15:20 tenga su grilla y no la del turno de la mañana. Sin esta regla los turnos se solapan de a poco y el calendario deja de representar la agenda real. |
 | Paciente vigente para agendar | Cita | No se agendan Citas nuevas sobre un Paciente con `deleted_at`. Las ya programadas siguen consultables (regla 4.5). |
 | Estado no editable | Cita | `estado` no se recibe por la API en ninguna operación: lo mueve el sistema (Modelo de Datos, 4.7). |
 | Un dispositivo pertenece a una sola cuenta | Dispositivo | Un token de push identifica un teléfono, no una persona. Registrar un token ya asociado a otra cuenta lo reasigna a la que lo registra: es el mismo teléfono donde ahora entró otro usuario, y seguir mandándole las notificaciones del anterior sería filtrarle datos de otra mascota. |
@@ -228,9 +234,9 @@ Sobre la Clínica, el alcance se resuelve así:
 
 | Rol | Regla de alcance sobre Clínica |
 |---|---|
-| Clínica_admin | Su propia clínica, la de su `clínica_id`: la lee y edita sus datos administrativos (nombre, dirección, contacto) y su horario de atención. **No la da de alta ni de baja** — eso es del administrador de la plataforma, fuera de la API (proceso 4.10). |
-| Veterinario | Solo lectura de la clínica a la que pertenece, vía su `clínica_de_pertenencia_id`. La necesita para agendar: sin el horario de atención y la duración del turno no puede saber qué horas son válidas (regla 2.2). No la edita. |
-| Tutor | **Lee el directorio**: nombre, dirección y contacto de cualquier clínica, para poder elegir con cuál compartir su mascota. No lee su horario de atención ni su plantel, y no edita nada. |
+| Clínica_admin | Su propia clínica, la de su `clínica_id`: la lee y edita sus datos administrativos (nombre, dirección, contacto), la duración del turno y sus **Franjas de atención** (Modelo de Datos, 4.18), que escribe como conjunto completo. También carga y da de baja las **Ausencias** de su plantel (4.19). **No la da de alta ni de baja** — eso es del administrador de la plataforma, fuera de la API (proceso 4.10). |
+| Veterinario | Solo lectura de la clínica a la que pertenece, vía su `clínica_de_pertenencia_id`, incluidas sus Franjas de atención y las Ausencias del plantel. Las necesita para agendar: sin la grilla no sabe qué horas son válidas, y sin las ausencias ofrecería turnos a quien no va a estar (regla 2.2). No las edita. |
+| Tutor | **Lee el directorio**: nombre, dirección y contacto de cualquier clínica, para poder elegir con cuál compartir su mascota. No lee su plantel ni sus ausencias, y no edita nada. Sí alcanza la **grilla de la clínica que atiende a su mascota**, y solo esa: sin ella no podría elegir hora al pedir una reagenda (Alcance de Plataformas, 5.4). |
 
 > Que el clínica_admin **edite** su propia clínica no estaba en la primera versión de este documento: la matriz del Modelo de Datos la daba como escritura exclusiva del administrador de la plataforma, mientras que Alcance de Plataformas 3.2 pedía la pantalla de edición desde la web. Era una contradicción entre dos documentos del mismo contrato. Se resolvió a favor de Alcance de Plataformas: el alta sigue siendo del administrador de la plataforma, la edición pasa a ser del clínica_admin. Que una clínica corrija su propio teléfono no puede depender de abrirle un ticket a Wayka.
 
@@ -263,6 +269,21 @@ Sobre el Evento clínico, el alcance se resuelve así:
 > **El historial ahora tiene autores de otras clínicas.** Una mascota compartida acumula eventos escritos por profesionales que el veterinario que la está leyendo no alcanza —el plantel solo se lee dentro de la propia clínica—, así que la lectura de un Evento clínico devuelve el **nombre del autor y el de su clínica** resueltos por el backend. No es un aflojamiento del alcance sobre la ficha de Veterinario: es el mínimo sin el cual la trazabilidad se vuelve un identificador que nadie puede resolver.
 
 > Que un veterinario pueda editar el evento de un colega es el mismo criterio que la regla 2.4 ya fija para el borrado lógico ("el autor, o un veterinario de la misma clínica"). La alternativa era reservar la edición al autor, pero deja dos criterios distintos sobre la misma entidad: un colega podría borrar el registro entero y no corregirle una fecha. La trazabilidad no se pierde: `veterinario_id` conserva la autoría y la Auditoría registra quién editó qué y cuándo.
+
+Sobre los **agregados de gestión** de la clínica, el alcance se resuelve así:
+
+| Rol | Regla de alcance sobre los agregados |
+|---|---|
+| Clínica_admin | Su propia clínica, la de su `clínica_id`. Lee **conteos** de Cita, Consulta atendida y Vínculo con clínica: ocupación de la grilla, citas sin asignar, atenciones por período y por profesional, vínculos vigentes y altas del período. Nunca la fila individual. |
+| Veterinario, Tutor | Sin acceso por esta vía. Los dos ya leen los registros que les corresponden, uno por uno, con su propio alcance. |
+
+> **Un conteo sin `paciente_id` ni dato clínico no es historial clínico.** Es la decisión que la matriz del Modelo de Datos (sección 5) dejaba pendiente de tomar explícitamente. El rol que administra la clínica no podía saber si su propia agenda se estaba usando, y negarle un número que no identifica a nadie no protegía a ningún paciente.
+>
+> **El límite es la forma del dato, no la entidad.** Lo que sale es un número con su corte —período, profesional, `origen`—, nunca una lista de registros. Un listado de "atenciones del martes" con hora y profesional reconstruye quién fue atendido en cuanto se cruza con cualquier otra cosa, aunque no traiga el `paciente_id`. Por eso la regla se aplica sobre la respuesta y no sobre la tabla de origen.
+>
+> **El Evento clínico y la Medicación quedan afuera incluso agregados.** No es una inconsistencia con lo anterior: el agregado que los necesitaría es la cobertura por profesional —cuántas atenciones terminaron con historial cargado—, y esa es una medición del desempeño de una persona, no de la operación de la clínica. Se decidió dejarla fuera del alcance del rol. Sigue calculándose para el piloto por SQL (Telemetría de Producto, 9), que es donde vivía desde el principio.
+>
+> **El período es el corte, y es explícito.** Todo agregado se pide por semana o por mes; no hay un "desde siempre" que devuelva un número sin denominador. Las horas se leen en la `zona_horaria` de la clínica (Modelo de Datos, 4.3), igual que la Cita y la Consulta atendida.
 
 Sobre la entidad Usuario, el alcance se resuelve así:
 
@@ -423,7 +444,9 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 ### 4.10 Alta de una clínica y de su cuenta administrativa
 
 1. El administrador de la plataforma da de alta la Clínica y su cuenta clínica_admin en una sola operación, por fuera de la API HTTP (una herramienta de línea de comandos que invoca la misma capa de negocio).
-2. La cuenta se crea con clínica_id y clínica_de_pertenencia_id apuntando a la clínica recién creada, y **sin contraseña**: la define la propia clínica al estrenarla (proceso 4.16). La clínica nace con un horario de atención por defecto, editable desde la web.
+2. La cuenta se crea con clínica_id y clínica_de_pertenencia_id apuntando a la clínica recién creada, y **sin contraseña**: la define la propia clínica al estrenarla (proceso 4.16). La clínica nace con **Franjas de atención por defecto de lunes a viernes** y una duración de turno por defecto. Nace con horario y no vacía porque una clínica sin ninguna franja no admite ninguna cita, y la primera pantalla que vería el veterinario sería un calendario que rechaza todo.
+
+> **El horario por defecto es un punto de partida, no una configuración fija.** La clínica lo edita entero desde la web (Alcance de Plataformas, 3.2.3), con las mismas reglas que cualquier otro cambio de grilla: puede abrir el sábado, cerrar el miércoles, partir el mediodía o cambiar las horas de cualquier día. Lo que el alta elige es solo qué ve la clínica la primera vez que entra, y se eligió lunes a viernes porque es lo que más veterinarias hacen — no porque el sistema suponga que no se atiende el fin de semana.
 3. La herramienta emite un **token de activación de un solo uso** y lo imprime una única vez. El administrador se lo entrega a la clínica por el canal que haya acordado con ella; el sistema no lo envía por email ni lo vuelve a mostrar.
 4. A partir de ahí, ese clínica_admin es responsable de dar de alta las cuentas de los veterinarios de su clínica (regla 2.5).
 
@@ -568,11 +591,28 @@ El hecho asistencial (Modelo de Datos, 4.16), separado de lo que se escriba sobr
 >
 > **La baja del Paciente no arrastra las consultas**, con el mismo criterio que el resto del historial (4.5): quedan consultables desde la ficha y siguen contando para las métricas del período en que ocurrieron. Lo que se rechaza es asentar consultas nuevas.
 
+### 4.22 Carga de una ausencia del profesional
+
+Que un veterinario no va a estar disponible (Modelo de Datos, 4.19).
+
+1. El clínica_admin carga el rango —`desde` y `hasta`, con hora— sobre alguien de su propio plantel. Se validan rango coherente, veterinario vigente de su clínica y no solapamiento con otra ausencia vigente (regla 2.2).
+2. Antes de guardar, el sistema resuelve **qué Citas pendientes asignadas a ese veterinario caen dentro del rango**, y se lo dice a quien está cargando: cuántas son y cuáles.
+3. La ausencia se guarda, y en la **misma transacción** esas citas quedan con `veterinario_id` en NULL. No se cancelan, no se mueven de hora y no cambian de estado: siguen pendientes, sin profesional.
+4. Cada desasignación queda en la Auditoría de su Cita, con `usuario_tipo = clínica_admin`. La ausencia en sí no se audita: `registrada_por_usuario_id` ya dice quién la cargó.
+
+> **Se guarda siempre.** No se rechaza por las citas que toca, a diferencia de achicar el horario (regla 2.2). La asimetría es deliberada y las dos cosas que se pierden no son la misma: achicar el horario deja la cita **sin turno donde existir**, y eso hay que resolverlo antes; una ausencia deja la cita **sin quién la atienda**, que es un estado que la agenda ya sabe representar. Además, el horario se planifica y una ausencia muchas veces se entera: impedir registrar que alguien no vino no hace que haya venido, y el día que hay que cargarla rápido es justo el día en que nadie tiene tiempo de reasignar seis turnos primero.
+
+> **Desasignar no es perder trabajo.** La cita cae en la lista de "sin asignar" (Alcance de Plataformas, 3.6), que es exactamente la cola de lo que hay que repartir, y el panel del clínica_admin la cuenta. Sin la desasignación, la cita seguiría figurando a nombre de alguien que no va a estar, y nadie se enteraría hasta el día del turno.
+
+> **No mira hacia atrás.** No toca Consultas atendidas ya asentadas ni Citas cumplidas: si el sistema dice que esa persona atendió el martes, una ausencia cargada después no lo desmiente. Ahí hay un error de carga en uno de los dos y se corrige el que esté mal.
+
+> **La baja de la ausencia no reasigna nada.** Las citas desasignadas siguen sin profesional y se reparten como cualquier otra. Devolverlas a quien las tenía sería adivinar que nadie las movió mientras tanto, y pisaría una asignación que alguien pudo haber hecho a propósito.
+
 ## 5. Fuera de alcance de este documento
 
 - **Deduplicación de fichas de Tutor** — cómo se fusionan la ficha de un tutor auto-registrado y la que una clínica pudo haber creado para la misma persona (ver 4.9).
 - **Auditoría de la entidad Usuario** — el alta, la edición, la suspensión y la baja de cuentas no generan registro de Auditoría hoy: la sección 4.10 del Modelo de Datos la limita a Evento clínico, Medicación, Cita y Paciente. Queda por decidir si las operaciones sobre cuentas deben auditarse.
-- **Recuperación de contraseña, verificación de email y bloqueo por intentos fallidos** — no definidos.
+- **Verificación de email y bloqueo por intentos fallidos** — no definidos. La recuperación de contraseña sí está definida (proceso 4.4.1).
 - **Vista de paciente derivado en urgencia** — priorización de datos mostrados, tiempos de carga aceptables, y su relación con la Fase 2 (matching geolocalizado).
 
 Ambas quedan pendientes de definición en una etapa posterior del proyecto.

@@ -48,16 +48,56 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Pide únicamente la contraseña nueva, con la política de la regla 2.1 a la vista mientras se escribe.
 - Un token inexistente, vencido o ya usado se rechaza con un mismo mensaje genérico: la pantalla no ayuda a distinguir cuál de los tres fue.
 - Al activar **no se entra**: el canje no emite sesión. La pantalla lleva al login, donde se estrena la contraseña recién definida.
-- Es, junto con el registro de tutor en móvil (5.1), una de las dos pantallas del sistema alcanzables sin sesión.
+- Es, junto con el ingreso, la recuperación de contraseña (3.1.2) y el registro de tutor (5.1), una de las pantallas alcanzables sin sesión.
 
 ### 3.2 Panel de clínica (rol: Clínica_admin)
+
+Es la pantalla entera del rol: no hay barra de navegación con secciones paralelas porque no hay nada más. Un tablero arriba y la gestión abajo.
+
+#### 3.2.1 Tablero
+
+Cuatro bloques de **conteos**. Ninguno lista registros ni nombra una mascota: el rol no alcanza el historial clínico y un listado de atenciones con hora y profesional lo reconstruye por el costado (Modelo de Datos, 5).
+
+- **Ocupación de la grilla** — turnos ocupados sobre turnos disponibles del período, y el mismo par por profesional. Los disponibles salen de las Franjas de atención y de la duración del turno (3.2.3); los ocupados, de las Citas pendientes. Es lo único del producto que cambia todos los días para este rol, y la razón por la que el tablero existe.
+- **Sin asignar** — cuántas Citas del período no tienen profesional. Es la cola de lo que hay que repartir (3.6), y crece sola cuando se carga una ausencia (3.2.4).
+- **Atenciones** — cuántas Consultas atendidas se asentaron en el período, por profesional y por origen (agendada / espontánea / urgencia). Es el volumen de trabajo real, que no coincide con la agenda: la mayoría de las atenciones de una veterinaria no estaban agendadas.
+- **Cartera** — pacientes con vínculo vigente, y cuántos entraron en el período separados por vía (alta de la clínica / compartido por el tutor).
+
+> **Toggle semana / mes, en todo el tablero a la vez.** Un control único arriba y no uno por bloque: comparar la ocupación de la semana contra las atenciones del mes es leer dos cosas que no se corresponden, y dos controles invitan justo a eso. El período se lee en la `zona_horaria` de la clínica (Modelo de Datos, 4.3).
+>
+> **No hay "desde siempre".** Todo conteo va contra un período, porque un número sin denominador no se puede interpretar: "412 atenciones" no dice nada, "412 este mes contra 380 el anterior" sí.
+>
+> **No se muestra el tipo de la Cita** (vacuna, control, cirugía). Es un conteo de ocupación, no de qué se hace: el tipo por paciente empieza a parecerse al historial, y para saber si la agenda se está usando alcanza con cuántos turnos están tomados.
+>
+> **No hay cobertura de historial** —qué porcentaje de las atenciones terminó con un evento clínico cargado— y no es un olvido: eso mide el desempeño de una persona, no la operación de la clínica, y se decidió dejarlo fuera del alcance de este rol. Se sigue calculando para el piloto por SQL (Telemetría de Producto, 9).
+
+#### 3.2.2 Plantel
+
 - Alta, edición y baja lógica de Veterinarios asociados a la clínica. La ficha y la cuenta de acceso se crean juntas, en una sola operación (proceso 4.12 de Reglas de Negocio), y la baja de la ficha desactiva la cuenta (4.13).
-- La clínica y su propia cuenta de administrador no se crean desde acá: las da de alta el administrador de la plataforma (proceso 4.10 de Reglas de Negocio).
-- Edición de datos administrativos de la Clínica (nombre, dirección con confirmación en el mapa, contacto) y de su **horario de atención**: hora de apertura, hora de cierre y duración del turno. Los tres definen la grilla con la que el veterinario agenda (Modelo de Datos, 4.3), así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
-- El horario no se puede achicar mientras existan Citas pendientes que queden afuera del horario nuevo (regla 2.2): la pantalla tiene que decir cuáles son, no solo que la operación falló.
+- El listado avisa **quién no tiene matrícula cargada**. Sin matrícula el veterinario queda en modo restringido y no puede escribir historial (Reglas de Negocio, 2.2) — hoy eso se descubre cuando la persona intenta cargar un evento y no puede, que es el peor momento y el peor lugar para enterarse.
+- Estado de cada cuenta: activa, suspendida o dada de baja.
+- **Restablecer la contraseña de una cuenta del plantel**, desde la ficha de esa persona. No exige conocer la anterior. No es la única salida del veterinario que olvidó la suya —para eso está la recuperación sin sesión (3.1.2)—, sino la que no depende del correo: sirve cuando el enlace no llega o la persona ya no tiene acceso a esa casilla. La contraseña nueva se la comunica el administrador por un medio propio, fuera del sistema.
+
+#### 3.2.3 Horario de atención
+
+- Edición de las **Franjas de atención** de la clínica (Modelo de Datos, 4.18) y de la duración del turno. Los dos definen la grilla con la que el veterinario agenda, así que un cambio acá cambia qué horas son válidas en el calendario de toda la clínica.
+- Se edita **la semana entera y se guarda de una vez**: la grilla se valida completa (que ninguna franja se solape, que el turno divida a cada una) antes de aceptarse.
+- Un día **sin ninguna franja es un día cerrado**, y la pantalla lo dice con esas palabras en vez de dejar el día vacío y ambiguo. Dos franjas el mismo día son el **corte de mediodía**: el hueco entre las dos es lo que las hace dos y no una.
+- **Previsualización antes de guardar**: cuántos turnos por día produce la grilla nueva, y qué Citas pendientes quedarían afuera. El horario no se puede achicar mientras esas citas existan (regla 2.2), y la pantalla tiene que decir cuáles son **antes** del intento, no como el texto de un error — corregir la grilla a ciegas hasta que el guardado deje de fallar no es editar un horario.
+
+#### 3.2.4 Ausencias del plantel
+
+- Carga y baja de las **Ausencias** de un profesional (Modelo de Datos, 4.19): un rango con fecha y hora, sobre alguien del propio plantel. Sirven para que la grilla no le ofrezca turnos a quien no va a estar.
+- **No se pide un motivo**, y la pantalla no tiene dónde escribirlo. Es deliberado: el motivo de la ausencia de un empleado puede ser un dato de salud, y para que la agenda funcione alcanza con el rango.
+- Antes de guardar, la pantalla dice **cuántas citas asignadas caen adentro del rango y cuáles son**. Al guardar, esas citas quedan **sin profesional** —no se cancelan ni se mueven de hora— y pasan a la cola de sin asignar (3.6). La ausencia se guarda siempre: el diálogo informa el efecto, no pide permiso para dejar de bloquear.
+- Dar de baja una ausencia **no devuelve las citas** a quien las tenía. La pantalla lo dice, porque lo contrario es lo que cualquiera esperaría.
+
+#### 3.2.5 La clínica y la propia cuenta
+
+- Edición de datos administrativos de la Clínica: nombre, dirección con confirmación en el mapa, contacto.
 - Cambio de la contraseña de la propia cuenta.
-- **Restablecer la contraseña de una cuenta del plantel**, desde la ficha de esa persona. No exige conocer la anterior. Es la única salida que tiene hoy un veterinario que olvidó la suya: no hay recuperación sin sesión (sección 6), y el correo con el que se avisaría tampoco existe. La contraseña nueva se la comunica el administrador por un medio propio, fuera del sistema.
-- Sin acceso a historial clínico ni medicación de pacientes (regla de alcance ya definida).
+- La clínica y su propia cuenta de administrador **no se crean desde acá**: las da de alta el administrador de la plataforma (proceso 4.10 de Reglas de Negocio).
+- Sin acceso a historial clínico, medicación, adjuntos, fichas de paciente ni fichas de tutor. Lo único que el rol ve de esa mitad del producto son los conteos del tablero (3.2.1).
 
 ### 3.3 Gestión de pacientes (rol: Veterinario)
 - Lectura del plantel de la propia clínica (sin poder modificarlo), para resolver quién firmó cada registro clínico.
@@ -87,10 +127,10 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Vista rápida de medicación activa por paciente.
 
 ### 3.6 Calendario / Citas (rol: Veterinario)
-- Creación de citas (vacuna, control, cirugía programada) con **fecha y hora**, sobre la grilla que definen el horario de atención y la duración del turno de la clínica (3.2). Las horas fuera de la grilla no se ofrecen: el backend las rechaza igual, pero ofrecerlas y después fallar es un error que la interfaz puede evitar.
+- Creación de citas (vacuna, control, cirugía programada) con **fecha y hora**, sobre la grilla que definen las franjas de atención y la duración del turno de la clínica (3.2.3). Las horas fuera de la grilla no se ofrecen: el backend las rechaza igual, pero ofrecerlas y después fallar es un error que la interfaz puede evitar.
 - La cita atendida se marca como cumplida desde la agenda, asentando la atención (3.3.1). No hay un control de "cumplida" aparte: cumplir una cita es haber atendido.
 - Vista de citas pendientes y vencidas de la clínica, por día, semana y mes, con quién atiende cada una. Son las citas agendadas **en esta clínica**: una mascota atendida también en otra tiene allá su propia agenda, que acá no se ve.
-- **Asignación de profesional**, opcional: una cita puede quedar de la clínica y repartirse después. Al asignar, no se ofrecen los profesionales que ya tienen otra cita en ese momento — el backend lo rechaza igual, pero ofrecerlo y después fallar es un error que la interfaz puede evitar.
+- **Asignación de profesional**, opcional: una cita puede quedar de la clínica y repartirse después. Al asignar, no se ofrecen los profesionales que ya tienen otra cita en ese momento **ni los que tienen una ausencia cargada** (3.2.4) — el backend lo rechaza igual, pero ofrecerlo y después fallar es un error que la interfaz puede evitar. Si no queda ninguno disponible, la cita se agenda igual sin profesional: que no haya quién la atienda todavía no es motivo para no tomar el turno.
 - Filtrar la agenda por profesional, incluyendo "sin asignar": es la lista de lo que todavía hay que repartir.
 
 ### 3.7 Mi cuenta (rol: Veterinario)
@@ -204,6 +244,5 @@ Quien recibe la invitación no necesita tener cuenta: el correo trae un enlace, 
 
 ## 6. Fuera de alcance de este documento
 
-- **Recuperación de contraseña sin sesión ("olvidé mi contraseña").** Hoy no existe ni como pantalla ni como endpoint. El veterinario tiene salida por el restablecimiento que hace su clínica_admin (3.2), pero **el tutor no tiene ninguna**: ninguna clínica alcanza su cuenta, porque el alcance de un administrador se resuelve contra la clínica de pertenencia y un tutor no tiene. Un tutor que olvida su contraseña hoy pierde el acceso. Cerrar el hueco pide backend nuevo (token de recuperación de un solo uso con vencimiento, y un proveedor de correo, que el sistema no tiene: hoy solo manda push).
 - **Vista específica de paciente derivado en urgencia** — pendiente de definición, relacionada con Fase 2.
 - **Elección de stack técnico** — este documento define funcionalidad, no tecnología.
