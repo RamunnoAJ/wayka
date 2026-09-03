@@ -661,7 +661,7 @@ Que un veterinario no va a estar disponible (Modelo de Datos, 4.19).
 
 La mayoría de las mascotas que se dan de alta ya tienen historia: vacunas puestas, alergias conocidas, una medicación en curso. Este proceso es cómo eso entra a Wayka, y **no está atado al alta**: se llega desde el onboarding la primera vez (4.17) y desde la ficha de la mascota siempre.
 
-1. El tutor —dueño o co-tutor con edición— elige una mascota que alcanza y vigente (regla 2.2), y elige **qué tipo de antecedente** carga: vacuna, alergia, medicación o "otra cosa que pasó". La interfaz llega con **vacuna preseleccionada**, que es el antecedente que más tutores tienen a mano; elegir otro es un toque y no un camino distinto.
+1. El tutor —dueño o co-tutor con edición— elige una mascota que alcanza y vigente (regla 2.2), y elige **qué tipo de antecedente** carga: vacuna, alergia, medicación o "otra cosa que pasó". La interfaz llega con **vacuna destacada**, que es el antecedente que más tutores tienen a mano; elegir otro es un toque y no un camino distinto.
 2. Completa el formulario del tipo, que pide menos que el del veterinario: obligatorio es lo que identifica al antecedente —el nombre de la vacuna, el alérgeno, la droga— y la fecha; el resto es opcional (regla 2.2 y Modelo de Datos, 4.5).
 3. La fecha se declara **con su precisión**: día, mes o solo año. La interfaz no obliga a bajar de nivel — "en 2023" es una respuesta completa — y **arranca en año**, que es la precisión del caso normal cuando el dato sale de una libreta vieja. Precisar el mes o el día es la excepción y la decide el tutor. Es la única diferencia con el formulario del veterinario, que sí arranca en día porque escribe lo que está pasando hoy.
 4. Se persiste según el tipo:
