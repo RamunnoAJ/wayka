@@ -343,6 +343,10 @@ Las **claves son las mismas para los dos orígenes**; lo que cambia es qué es o
 > **La foto de perfil es un adjunto marcado y no un campo del Paciente.** Un `foto_url` colgado de la mascota habría sido una segunda ruta de subida —con su propia validación de MIME, su propio techo de tamaño y su propio objeto en el bucket— para un archivo que es exactamente lo mismo que ya sube el proceso de Adjuntos. Con el flag, la foto entra por el camino de siempre y hereda el alcance, la Auditoría y la baja lógica de cualquier adjunto; lo único que agrega es cuál de todos se muestra.
 >
 > **La unicidad la sostiene la capa de negocio**: marcar una foto desmarca a la anterior en la misma operación (Reglas de Negocio, 4.14). Un índice único parcial sobre `paciente_id` para las filas marcadas y vigentes es igual de válido como red de seguridad, y queda a criterio de la implementación — el contrato es "como máximo una", no cómo se hace cumplir.
+>
+> **La lectura de la foto no pasa por Adjuntos.** Toda lectura de Paciente lleva un `foto_perfil_url` —la URL prefirmada de la foto marcada, o null si la mascota no tiene—, y lo mismo la fila de agenda que ya viaja con el nombre y la especie de la mascota. No es una columna: se resuelve por pedido, con el mismo criterio que `nivel_de_acceso` (4.14). Sin eso, una lista de mascotas necesita un pedido de adjuntos por fila para dibujar el avatar de cada una, que es exactamente lo que la proyección de agenda evita para el nombre.
+>
+> **No se persiste ni se replica**: es una URL prefirmada de vida corta, igual que el `archivo_url` del adjunto, así que no viaja en el delta de sincronización (Sincronización sin Conexión, 2) y sin conexión el avatar vuelve al ícono de la especie.
 
 > `archivo_url` se reemplazó por `clave_de_archivo`. El bucket es privado: no existe una URL estable que guardar. La API expone en cada lectura una URL prefirmada de vida corta, que se calcula en el momento y no se persiste — guardar una URL sería guardar un permiso vencido (Arquitectura, 3.4).
 

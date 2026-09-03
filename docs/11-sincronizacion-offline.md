@@ -34,6 +34,8 @@ Ese conjunto **no está acotado por clínica**: una mascota puede estar atendida
 
 La excepción son los **archivos** de los Adjuntos, y no es un olvido: mirarlos exige la URL prefirmada, que vence en minutos y por eso no se replica (sección 8). La lista de qué archivos tiene una mascota sí está en el dispositivo, así que sin conexión la ficha los enumera y no los abre — bastante mejor que un bloque de error donde debería haber una lista.
 
+Por el mismo motivo el Paciente viaja a la copia local **sin su `foto_perfil_url`** (Modelo de Datos, 4.8): es una URL prefirmada de la foto marcada, no una columna de la ficha, y guardarla sería guardar un permiso que ya venció. Sin conexión el avatar de la mascota vuelve al ícono de su especie, que es la misma degradación que la ficha aplica a sus archivos.
+
 La invariante que sí las une, y que no se negocia: **lo replicable es siempre un subconjunto de lo que el motor de permisos ya autoriza**. Ningún dispositivo guarda un registro que el backend le negaría en una lectura online.
 
 El co-tutor con nivel de **solo lectura** también tiene copia local, y no es una concesión: la invariante de arriba dice que lo replicable es un subconjunto de lo que el motor ya autoriza, y ese tutor está autorizado a leer esa mascota. Lo que su nivel acota es qué puede escribir, y de eso se ocupa la sección 5.
