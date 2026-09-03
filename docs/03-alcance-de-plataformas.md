@@ -130,7 +130,7 @@ Los datos de la clínica, el horario de atención y la cuenta propia. Van juntos
 - Búsqueda de tutores por documento, nombre o contacto; alta y edición de la ficha de un tutor, incluido completar documento y dirección — la dirección con el mismo autocompletado y mapa que usa el tutor en su ficha propia (5.8). El listado se pagina siempre: no está acotado a la propia clínica.
 - Baja lógica de una ficha de tutor.
 - Búsqueda y listado de los pacientes vinculados a la propia clínica.
-- Ficha de paciente: datos básicos, historial de eventos clínicos, medicación activa e histórica.
+- Ficha de paciente: datos básicos, historial de eventos clínicos, medicación activa e histórica. **Cada registro dice quién lo declaró**: los que cargó el tutor como antecedente van marcados de forma inequívoca junto a los del profesional, en la misma lista y no en una solapa aparte (Modelo de Datos, 4.5). El veterinario los edita y los da de baja como a los propios.
 - **Quiénes son sus tutores**: el dueño y los co-tutores con acceso, con su contacto. Antes había uno solo y era implícito; ahora hay que saber a quién llamar.
 - **Qué otras clínicas la atienden**, solo el nombre. Es continuidad de cuidado —no repetir una vacuna que puso otra—, no una ventana a la cartera ajena.
 - **Dejar de atenderla**: revoca el vínculo de la propia clínica y la saca de la cartera, sin tocar el registro. Se rechaza si quedan citas pendientes. El veterinario **no da de baja la mascota**: eso es del dueño (Reglas de Negocio, 2.4).
@@ -143,7 +143,7 @@ Los datos de la clínica, el horario de atención y la cuenta propia. Van juntos
 
 ### 3.4 Carga de evento clínico (rol: Veterinario)
 - Formulario por tipo de evento (consulta, vacuna, cirugía, control, urgencia). Si se entra desde una atención asentada (3.3.1), el evento queda vinculado a ella sin que haya que elegir nada.
-- Campos estructurados obligatorios para vacunas y alergias (según nota 4.5 del Modelo de Datos).
+- Campos estructurados obligatorios para vacunas, medicación y alergias (según nota 4.5 del Modelo de Datos). Para el veterinario rige la forma completa —el lote y la severidad incluidos—: lo que se afloja con el origen `tutor` no se afloja acá.
 - Adjuntar archivos (foto, PDF, estudio) al evento.
 
 ### 3.5 Gestión de medicación (rol: Veterinario)
@@ -176,7 +176,7 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 **La barra tiene tres pestañas: Mascotas, Citas y Ajustes.** Es la lista entera de lo que el tutor abre por sí mismo; todo lo demás es una pantalla de detalle a la que se llega desde una de las tres.
 
 - Los **adjuntos no son pestaña**: acompañan a una mascota y no viven por su cuenta. Un listado global de archivos sueltos, sin la ficha que les da sentido, no responde ninguna pregunta que el tutor se haga. Se entra a ellos desde la ficha (5.6).
-- La **ficha de paciente**, **compartir** y **quién la ve** cuelgan de Mascotas: todas piden una mascota elegida antes de existir.
+- La **ficha de paciente**, **compartir**, **quién la ve** y **cargar un antecedente** cuelgan de Mascotas: todas piden una mascota elegida antes de existir.
 - Los **avisos no son pestaña**: son un interruptor por teléfono, no una bandeja (5.5), y viven adentro de Ajustes junto con la ficha propia del tutor (5.8).
 
 ### 5.1 Login / Registro
@@ -187,13 +187,20 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 ### 5.2 Mis mascotas
 - Listado de las mascotas del tutor autenticado: las suyas y las que otra persona le compartió, con una etiqueta que distingue unas de otras y con qué nivel.
 - **Alta de una mascota** (Reglas de Negocio, 4.17). No pide clínica: la mascota nace del tutor y se comparte después. La pantalla vacía ofrece cargar la primera, en vez de pedir que espere a que una clínica lo haga.
+- **Antes de pedir, se muestra.** El estado vacío no arranca con el formulario: muestra primero una **ficha de ejemplo** —nombre, foto y antecedentes ficticios— para que el tutor vea qué va a tener antes de escribir nada. Es un **mock del cliente**: no persiste, no crea una mascota y no toca el backend. No se puede compartir, no se puede editar y la pantalla dice que es un ejemplo; una ficha de demostración que se confunda con una real es peor que no tenerla.
+- **El alta pide una foto de la mascota**, opcional, y la pone primero en la pantalla y no como un campo más abajo del peso. Se sube por el camino de adjuntos (5.6), marcada como foto de perfil, y **con la mascota ya creada**: si la subida falla, la mascota queda dada de alta igual y la pantalla lo dice, en vez de perder el formulario entero por una foto.
+- **El progreso del alta no arranca en cero.** El tutor ya se registró, y la barra lo reconoce: empieza el formulario en un tercio, llega a dos tercios en el paso de antecedentes y cierra en el resumen. El resumen dice qué armó el tutor —"la ficha de [nombre]"— y no que se guardaron unos datos.
+- Terminada el alta, la aplicación pregunta **si tiene antecedentes para cargar** y lleva a 5.12. Es una pantalla con salida directa: saltearla deja la mascota dada de alta igual, y la ficha ofrece cargarlos más adelante. La salida **dice qué queda sin resolver** en vez de un "lo hago después" seco: que se puede cargar cuando quiera, pero que si hay una urgencia antes el veterinario arranca sin saber nada de esa mascota. Es cierto, y es lo que el tutor necesita para decidir. **Este camino pide conexión** de punta a punta (Sincronización sin Conexión, 5) y la pantalla lo dice cuando no la hay, en vez de dejar escribir algo que no se va a poder guardar.
 - Las invitaciones pendientes aparecen arriba del listado, que es donde el tutor mira. No suman un ítem a la barra de pestañas: aceptar una deja la mascota en este mismo listado, así que la acción ya está en su lugar y una pestaña propia solo agregaría un desvío para volver acá.
 
 ### 5.3 Ficha de paciente
-- Historial de eventos clínicos: fecha, tipo, descripción, diagnóstico, y **quién lo escribió** — el profesional y su clínica, que con una mascota compartida ya no son siempre los mismos.
+- Historial de eventos clínicos: fecha, tipo, descripción, diagnóstico, y **quién lo escribió** — el profesional y su clínica, que con una mascota compartida ya no son siempre los mismos, o el propio tutor cuando el registro es un antecedente que él cargó.
+- **Foto y nombre de la mascota encabezan la ficha**, cuando hay foto de perfil cargada (5.6). Sin foto la ficha funciona igual; no se rellena con un ícono de especie que finja ser una.
 - Medicación activa e histórica.
 - Qué clínicas la atienden hoy.
-- **Sin permisos de edición sobre ningún dato clínico**, en ningún nivel (regla de la matriz de permisos). Lo que sí se edita son los datos de la mascota, y depende del nivel (5.7).
+- **Agregar un antecedente** (5.12), desde la ficha y en cualquier momento, no solo al dar de alta.
+- **Sobre lo que escribió un profesional no hay edición de ninguna clase**, en ningún nivel. Lo que el tutor edita y da de baja son **sus propios antecedentes** (Reglas de Negocio, 3.2), más los datos no clínicos de la mascota según el nivel (5.7). La ficha tiene que hacer evidente cuál es cuál: una fila con acciones al lado de otra sin ellas, sin decir por qué, se lee como una falla.
+- Una fecha declarada con precisión de mes o de año **se muestra como se declaró** —"marzo de 2023", "2023"— y nunca como un 1 de enero. El día rellenado es un detalle de cómo se guarda, no algo que el tutor haya dicho.
 - La entrada a "Quién la ve" (5.10) **cambia según el estado**: mientras no la vea nadie es la invitación a compartir, en un toque; ya compartida es la fila de gestión, que dice con quién. Una mascota recién cargada no la ve nadie, y ahí lo que hace falta no es la entrada a una lista vacía sino la acción — sin una clínica que la atienda, nadie va a escribirle el historial.
 
 ### 5.4 Calendario
@@ -213,7 +220,8 @@ No es una pantalla de la barra: lo que el tutor toca de todo esto es un interrup
 - El aviso dice qué mascota, qué día y a qué hora; nunca contenido clínico. Una notificación se lee en la pantalla bloqueada del teléfono.
 
 ### 5.6 Adjuntos
-- Subida de archivos (ej. ficha histórica en papel, foto de una herida) asociados al paciente.
+- Subida de archivos (ej. ficha histórica en papel, foto de una herida) asociados al paciente. Es también por donde entran las **fotos de la libreta sanitaria** en la carga de antecedentes (5.12): quedan colgadas de la mascota, sin obligar a asociar cada una a un antecedente puntual.
+- **Marcar una foto como foto de perfil de la mascota**, desde la tarjeta del adjunto. Marcar una desmarca la anterior sin preguntar, porque hay una sola (Reglas de Negocio, 4.14): la anterior no se borra, deja de ser la que se muestra. Solo se ofrece sobre adjuntos que son imagen.
 - En móvil, además, **sacar la foto en el momento** con la cámara de la app, con guía de encuadre y revisión antes de subir. En web solo se adjunta un archivo que ya exista.
 - **Mirar el adjunto sin salir de la ficha**, tocando la tarjeta (o el chip, en el historial). Un listado que solo muestra nombre y peso obliga a retirar y volver a subir para saber si la foto que se cargó era la correcta.
   - La tarjeta de un adjunto que es imagen **muestra la imagen**, no un icono genérico: reconocer cuál es cuál sin abrir ninguno es la mitad del problema.
@@ -266,6 +274,17 @@ Quien recibe la invitación no necesita tener cuenta: el correo trae un enlace, 
 - El **enlace del correo sigue siendo el otro camino**, y no es redundante: quien todavía no tiene cuenta no puede recibir un aviso dentro de una app en la que no está. Si el enlace se abre sin sesión, la pantalla de ingreso vuelve a la invitación después de entrar o de registrarse.
 - Aceptar o rechazar. Aceptar deja la mascota en el listado con su etiqueta de nivel; rechazar la anula, y el enlace del correo deja de servir.
   - Desde la app se acepta **por identificador y no con el token**: el token es la credencial y no vuelve en ningún listado, porque devolverlo lo convertiría en algo que se puede reenviar. Lo que autoriza en los dos casos es lo mismo — que la cuenta tenga el correo al que se dirigió la invitación.
+
+### 5.12 Cargar un antecedente
+- Selector del tipo: **vacuna**, **alergia**, **medicación que está tomando** y **otra cosa que pasó** (una cirugía vieja, una consulta en otra veterinaria, un diagnóstico). Son cuatro tarjetas y no un desplegable de siete tipos: el tutor elige entre las cosas que él sabe nombrar, no entre las categorías del historial (Reglas de Negocio, 4.23). **Vacuna viene elegida de entrada**: es lo que más gente tiene a mano, y elegir otra es un toque.
+- Formulario corto por tipo. Lo único obligatorio es qué es —el nombre de la vacuna, el alérgeno, la droga— y la fecha; el resto se puede dejar vacío y la pantalla lo dice así, en vez de marcar en rojo lo que el tutor no tiene cómo saber.
+- **La fecha se declara con la precisión que se tenga**: día exacto, mes, o solo el año. El control ofrece los tres niveles sin castigar al que elige el más grueso, y no exige bajar a día. Es el caso normal, no el degradado: una libreta de hace cinco años dice el año — y por eso el control **arranca en año** en esta pantalla, al revés que en la del veterinario, que escribe lo de hoy.
+- Se cargan **varios seguidos**: guardar uno devuelve al selector con lo ya cargado a la vista, y no a la ficha. Vaciar una libreta son seis o siete entradas, y volver al principio en cada una convierte diez minutos en veinte.
+- **Fotos de la libreta sanitaria u otros papeles**, por el mismo camino de adjuntos de 5.6 y con la cámara en móvil. También salteable.
+- **Resumen antes de terminar**: qué quedó cargado, con la opción de **quitar** cualquiera de las entradas y cargarla de nuevo. No hay "editar" acá, y no es una simplificación: la Medicación solo admite corregir su cierre —un cambio de dosis se registra cerrando la activa y abriendo otra, para no perder la anterior (Reglas de Negocio, 4.3)—, así que ofrecer editar en un tipo de antecedente y no en el otro sería una diferencia sin causa a los ojos del tutor. Quitar es baja lógica, como cualquier otra del historial.
+- Sin nada cargado el resumen no aparece: salir es salir. Pararlo en una pantalla que dice "no cargaste nada" es cobrarle un toque más a quien ya dijo que no tenía nada.
+- Se llega desde dos lados y es la misma pantalla: desde el alta de la mascota (5.2), envuelta en el onboarding, y desde la ficha (5.3), sin envoltorio. Lo único que cambia entre los dos caminos es que el primero exige conexión.
+- **Lo cargado se ve como propio.** En el historial aparece marcado como declarado por el tutor, y con las acciones de editar y dar de baja que los registros del veterinario no tienen. Es donde el tutor entiende, sin que nadie se lo explique, cuál es la diferencia entre las dos clases de registro.
 
 ## 6. Fuera de alcance de este documento
 

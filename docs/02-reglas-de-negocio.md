@@ -34,7 +34,11 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 |---|---|---|
 | Fecha no futura | Evento clínico | fecha no puede ser posterior a la fecha actual (un evento clínico registra algo que ya ocurrió; lo futuro es una Cita). |
 | Paciente vigente para cargar | Evento clínico | No se crean Eventos clínicos sobre un Paciente con `deleted_at`. El historial existente sigue consultable y editable (regla 4.5), pero no se le agregan episodios nuevos. |
-| Campo estructurado según el tipo | Evento clínico | `campo_estructurado` se valida contra el esquema fijo del `tipo` del evento (Modelo de Datos, 4.5): obligatorio y con forma exigida para vacuna, medicación y alergia, y NULL para consulta, cirugía, control y urgencia. Un JSON con claves ajenas al esquema, con faltantes, o presente en un tipo que no lo admite, se rechaza. |
+| Campo estructurado según el tipo **y el origen** | Evento clínico | `campo_estructurado` se valida contra el esquema fijo del `tipo` del evento (Modelo de Datos, 4.5): obligatorio para vacuna, medicación y alergia, y NULL para consulta, cirugía, control y urgencia. **Qué claves son obligatorias depende de `cargado_por`**: con `veterinario` rige la forma completa; con `tutor` quedan opcionales `lote` (vacuna), `severidad` (alergia) y `dosis` y `frecuencia` (medicación). Las claves son las mismas en los dos casos. Un JSON con claves ajenas al esquema, sin las obligatorias de su origen, o presente en un tipo que no lo admite, se rechaza. |
+| El origen lo pone el backend | Evento clínico, Medicación | `cargado_por` **no se recibe por la API**: se resuelve contra el `tipo_usuario` del token —veterinario escribe `veterinario`, tutor escribe `tutor`— igual que `usuario_id`. Recibirlo del cliente dejaría que un tutor firme un registro como si lo hubiera escrito un profesional, que es la única cosa que este campo existe para impedir. |
+| El origen no se edita | Evento clínico, Medicación | `cargado_por` no cambia en ninguna operación de edición. Un antecedente declarado no se convierte en acto médico, ni al revés. Corregir un origen mal cargado es dar de baja el registro y escribir uno nuevo. |
+| Precisión de fecha según el origen | Evento clínico, Medicación | `fecha_precision` distinta de `dia` solo se admite con `cargado_por = tutor`; un registro del veterinario que la declare se rechaza. Los componentes desconocidos de la fecha se guardan en `01` (Modelo de Datos, 4.5), y el backend **normaliza en vez de rechazar**: con precisión `anio` se persiste el 1 de enero de ese año aunque el cliente haya mandado otro día, y con `mes`, el 1 de ese mes. Guardar el día que el cliente mandó junto a una precisión que dice que no se conoce sería guardar dos afirmaciones que se contradicen. |
+| Fecha no futura con precisión parcial | Evento clínico, Medicación | La regla de fecha no futura se evalúa sobre el **período** que la fecha declara, no sobre el `DATE` guardado: con precisión `anio`, el año en curso es válido aunque el 1 de enero ya haya pasado; con `mes`, el mes en curso. Rechazar "2026" en marzo de 2026 sería rechazar un dato cierto por culpa del relleno.
 | Momento no futuro | Consulta atendida | `fecha_hora` no puede ser posterior al momento actual. Es el mismo criterio que el Evento clínico: lo que ya ocurrió se asienta, lo que va a ocurrir se agenda. |
 | Paciente vigente para asentar | Consulta atendida | No se asientan consultas sobre un Paciente con `deleted_at`, igual que no se le cargan eventos. |
 | Clínica vinculada | Consulta atendida | La clínica que asienta tiene que tener vínculo vigente con el paciente. Se resuelve contra el actor, no se recibe por la API. |
@@ -94,9 +98,9 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Regla | Aplica a | Validación |
 |---|---|---|
 | Nunca borrado físico | Todas las entidades clínicas | Ninguna operación de la aplicación ejecuta DELETE físico sobre Evento clínico, Medicación, Cita, Adjuntos o Paciente. Toda baja es lógica (deleted_at). |
-| Quién puede borrar (lógicamente) | Evento clínico, Medicación | Solo el veterinario autor del registro, o un veterinario de la misma clínica con rol habilitado, mientras esa clínica tenga vínculo vigente con el paciente. Ningún tutor borra datos clínicos, sea dueño o co-tutor. |
+| Quién puede borrar (lógicamente) | Evento clínico, Medicación | **Depende del `cargado_por` del registro.** Los de origen `veterinario`: cualquier veterinario de una clínica con vínculo vigente sobre ese paciente, no solo el autor. Los de origen `tutor`: el dueño de la mascota y el co-tutor con edición, y también el veterinario. Lo que ningún tutor puede es dar de baja un registro de origen `veterinario`, sea dueño o co-tutor. |
 | Quién puede borrar (lógicamente) | Adjuntos | Cada rol retira los adjuntos que subió: el veterinario los suyos, el tutor los suyos. Un tutor no borra el estudio que cargó la clínica, ni la clínica la ficha histórica que subió el tutor. La baja es lógica y **no borra el objeto del bucket**: "nunca borrado físico" alcanza también al archivo. |
-| Quién puede borrar (lógicamente) | Cita | Un veterinario de la clínica de la cita, el dueño de la mascota o un co-tutor con nivel de edición. Es la excepción a "el tutor nunca borra datos clínicos": la Cita es agenda, no historial — el tutor que sabe que no va a llevar a su mascota es quien mejor puede retirarla del calendario, y la baja no destruye nada que se haya registrado sobre la atención. |
+| Quién puede borrar (lógicamente) | Cita | Un veterinario de la clínica de la cita, el dueño de la mascota o un co-tutor con nivel de edición. Es la excepción a "el tutor solo da de baja lo que él declaró": la Cita es agenda, no historial — el tutor que sabe que no va a llevar a su mascota es quien mejor puede retirarla del calendario, y la baja no destruye nada que se haya registrado sobre la atención. |
 | Quién puede borrar (lógicamente) | Tutor | Solo un veterinario de una clínica vinculada a esa ficha. La baja marca deleted_at y no cascadea sobre la cuenta de Usuario del tutor. **Se rechaza mientras la ficha tenga Pacientes vigentes**: dar de baja al tutor dejaría mascotas activas sin nadie a quien contactar. La clínica tiene que resolver primero qué pasa con ellas. |
 | Quién puede borrar (lógicamente) | Paciente | **Solo el dueño.** Ni un co-tutor, ni siquiera con nivel de edición, ni un veterinario. No cascadea sobre Eventos clínicos, Medicación, Citas ni Adjuntos (regla 4.5). |
 | Quién puede revocar | Vínculo con clínica | El dueño de la mascota, sobre cualquier clínica. Un veterinario, solo sobre su propia clínica — es cómo la saca de su cartera. **Se rechaza mientras esa clínica tenga Citas pendientes de esa mascota**, informando cuántas. |
@@ -280,17 +284,24 @@ Sobre la ficha de Veterinario (el plantel de la clínica), el alcance se resuelv
 >
 > Que el veterinario pueda **leer** el plantel de su clínica no estaba definido en los documentos: se decidió al implementar la entidad. La alternativa era reservar el plantel entero al clínica_admin, pero eso dejaría al veterinario sin poder resolver quién firmó un Evento clínico de su propia clínica. Si el criterio no es el correcto, es el punto a revisar.
 
-Sobre el Evento clínico, el alcance se resuelve así:
+Sobre el Evento clínico y la Medicación, el alcance se resuelve así:
 
-| Rol | Regla de alcance sobre Evento clínico |
+| Rol | Regla de alcance sobre Evento clínico y Medicación |
 |---|---|
-| Veterinario | Sobre los Pacientes vinculados a su propia clínica: carga, lista, lee, **edita y da de baja cualquier evento de esos pacientes, sea suyo o de un colega**. `veterinario_id` registra al autor original y no cambia nunca, ni siquiera al editarlo. |
-| Tutor | Solo lectura, sobre las mascotas que alcanza — el dueño y los co-tutores de cualquier nivel leen igual. Ningún tutor escribe ni da de baja datos clínicos (regla 2.4). |
+| Veterinario | Sobre los Pacientes vinculados a su propia clínica: carga, lista, lee, **edita y da de baja cualquier registro de esos pacientes, sea suyo, de un colega o declarado por el tutor**. Escribe siempre con `cargado_por = veterinario`. `usuario_id` registra al autor original y no cambia nunca, ni siquiera al editarlo; `cargado_por` tampoco. |
+| Tutor **dueño** y **co-tutor con edición** | Lee el historial completo de las mascotas que alcanza. **Carga antecedentes** (proceso 4.23), que se persisten con `cargado_por = tutor`, y edita y da de baja **únicamente los registros de ese origen**. Sobre un registro de origen `veterinario` no tiene escritura de ninguna clase, en ningún momento. |
+| Tutor **co-tutor con lectura** | Lee, y nada más: no carga antecedentes propios ni toca los que cargó otro. |
 | Clínica_admin | Sin acceso, ni de lectura ni de escritura (Modelo de Datos, sección 5). |
+
+> **El tutor escribe historial, y lo que lo acota es el `cargado_por` del registro, no un estado ni una ventana de tiempo.** Es el cambio de criterio que el Modelo de Datos explica en su sección 1: la mayoría de las mascotas llega con vacunas, alergias y medicación que solo el dueño puede volcar. La capacidad no se apaga después del alta — se usa desde el onboarding la primera vez y desde la ficha siempre (4.23).
+>
+> **La asimetría es deliberada**: el veterinario corrige y da de baja lo que declaró el tutor, y el tutor no toca lo del veterinario. No es desconfianza sino competencia. El profesional es la fuente de verdad clínica y tiene que poder arreglar un antecedente mal cargado —una alergia mal escrita en la vista de urgencia es un riesgo, no un detalle—; un tutor editando un diagnóstico ajeno estaría reescribiendo un acto médico. Toda corrección queda en Auditoría con quién la hizo.
+>
+> **El co-tutor con edición carga antecedentes** con el mismo criterio con el que ya sube adjuntos: alcanza lo mismo que el dueño salvo administrar accesos, y quien cuida al animal la mitad de la semana sabe lo mismo de su historia.
 
 > **El historial ahora tiene autores de otras clínicas.** Una mascota compartida acumula eventos escritos por profesionales que el veterinario que la está leyendo no alcanza —el plantel solo se lee dentro de la propia clínica—, así que la lectura de un Evento clínico devuelve el **nombre del autor y el de su clínica** resueltos por el backend. No es un aflojamiento del alcance sobre la ficha de Veterinario: es el mínimo sin el cual la trazabilidad se vuelve un identificador que nadie puede resolver.
 
-> Que un veterinario pueda editar el evento de un colega es el mismo criterio que la regla 2.4 ya fija para el borrado lógico ("el autor, o un veterinario de la misma clínica"). La alternativa era reservar la edición al autor, pero deja dos criterios distintos sobre la misma entidad: un colega podría borrar el registro entero y no corregirle una fecha. La trazabilidad no se pierde: `veterinario_id` conserva la autoría y la Auditoría registra quién editó qué y cuándo.
+> Que un veterinario pueda editar el evento de un colega es el mismo criterio que la regla 2.4 ya fija para el borrado lógico ("el autor, o un veterinario de la misma clínica"). La alternativa era reservar la edición al autor, pero deja dos criterios distintos sobre la misma entidad: un colega podría borrar el registro entero y no corregirle una fecha. La trazabilidad no se pierde: `usuario_id` conserva la autoría, `cargado_por` conserva de qué clase de registro se trata, y la Auditoría registra quién editó qué y cuándo.
 
 Sobre los **agregados de gestión** de la clínica, el alcance se resuelve así:
 
@@ -365,9 +376,9 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 2. Se valida que el Paciente esté vigente: sobre una mascota dada de baja no se cargan episodios nuevos (regla 2.2).
 3. Se valida fecha no futura (regla 2.2).
 4. Se valida `campo_estructurado` contra el esquema fijo del tipo (regla 2.2 y Modelo de Datos, 4.5): vacuna, medicación y alergia lo exigen completo; los demás tipos lo exigen NULL.
-5. Se persiste el Evento clínico con veterinario_id = usuario autenticado (trazabilidad automática, no editable) y con `consulta_id`, que es el único vínculo que guarda con la atención: si se carga desde una **Consulta atendida** ya asentada, es la suya; si declara la cita que cumple, es la de esa cita, asentada en la misma transacción si todavía no estaba (4.21). Si no declara ninguna, queda en NULL, que es un caso válido y no un error.
+5. Se persiste el Evento clínico con `usuario_id` = usuario autenticado y `cargado_por = veterinario` (trazabilidad automática, ninguno de los dos editable ni recibido por la API), y con `consulta_id`, que es el único vínculo que guarda con la atención: si se carga desde una **Consulta atendida** ya asentada, es la suya; si declara la cita que cumple, es la de esa cita, asentada en la misma transacción si todavía no estaba (4.21). Si no declara ninguna, queda en NULL, que es un caso válido y no un error.
 6. Se registra la creación en Auditoría con valor_nuevo = contenido del evento.
-7. Un evento ya cargado lo puede editar o dar de baja cualquier Veterinario de la clínica del Paciente, no solo su autor (regla 3.2). La edición nunca reasigna `veterinario_id`, y tanto la edición como la baja quedan auditadas.
+7. Un evento ya cargado lo puede editar o dar de baja cualquier Veterinario de la clínica del Paciente, no solo su autor, y eso incluye los que declaró el tutor (regla 3.2). La edición nunca reasigna `usuario_id` ni cambia `cargado_por`, y tanto la edición como la baja quedan auditadas.
 8. Editar el `tipo` de un evento **descarta el `campo_estructurado` anterior**: el esquema que rige es el del tipo nuevo, y quien cambia el tipo manda los campos que ese tipo exige. Si el tipo nuevo no admite campo estructurado, alcanza con omitirlo.
 
 > Los dos puntos anteriores resuelven casos que los documentos no cubrían y se decidieron al implementar la entidad.
@@ -378,12 +389,12 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 
 ### 4.3 Ciclo de vida de una medicación
 
-1. Alta: el Veterinario crea un registro de Medicación con fecha_fin = NULL. Se valida que no exista otra medicación activa con la misma droga para ese paciente (regla 2.2).
+1. Alta: el Veterinario crea un registro de Medicación con fecha_fin = NULL y `cargado_por = veterinario`. Se valida que no exista otra medicación activa con la misma droga para ese paciente (regla 2.2) — **sin mirar el origen de la que ya está**: si la activa la declaró el tutor, el rechazo lo dice, y lo que corresponde es cerrarla y abrir la propia.
 2. Cierre: para registrar el fin de un tratamiento, el Veterinario actualiza fecha_fin de la medicación existente — no se crea un nuevo registro para "cerrar" el anterior.
 3. Cambio de dosis: se interpreta como cierre de la medicación activa + alta de una nueva (pasos 1 y 2 en secuencia), preservando el historial de dosis anteriores en vez de sobrescribir.
 4. Cada cambio de estado dispara un registro en Auditoría (acción = "edición", con valor_anterior y valor_nuevo).
 5. Reapertura: enviar fecha_fin = NULL sobre una medicación cerrada la vuelve activa. Es cómo se deshace un cierre cargado por error, y se rechaza si dejara dos activas de la misma droga — la regla 2.2 mirada desde el otro lado.
-6. Corrección de una carga errónea: `fecha_fin` es lo único editable de una Medicación. Corregir la droga, la dosis o la frecuencia es dar de baja lógica el registro y cargar uno nuevo. Exponer una edición libre de esos campos permitiría sobrescribir una dosis en silencio, que es exactamente lo que el paso 3 viene a evitar; la baja lógica deja el registro errado en el rastro de Auditoría y libera la droga para la medicación activa que corresponde.
+6. Corrección de una carga errónea: `fecha_fin` es lo único editable de una Medicación, sea cual sea su origen — un antecedente declarado por el tutor se corrige igual que uno del veterinario: dando de baja y cargando de nuevo. Corregir la droga, la dosis o la frecuencia es dar de baja lógica el registro y cargar uno nuevo. Exponer una edición libre de esos campos permitiría sobrescribir una dosis en silencio, que es exactamente lo que el paso 3 viene a evitar; la baja lógica deja el registro errado en el rastro de Auditoría y libera la droga para la medicación activa que corresponde.
 
 ### 4.4 Ciclo de vida de una cita
 
@@ -463,6 +474,8 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 
 > Esta regla reemplaza al criterio anterior, según el cual el tutor solo podía crear su cuenta si una clínica ya había registrado su ficha. Se priorizó que el tutor pueda empezar a usar la aplicación sin depender de una clínica. La contrapartida es la deduplicación: si una clínica carga una ficha de Tutor para alguien que ya se auto-registró (o viceversa), quedan dos fichas para la misma persona. El criterio de fusión queda pendiente de definición — ver Modelo de Datos, 4.1.
 >
+> **La cuenta queda operativa sin confirmar el correo**, y el tutor puede dar de alta su primera mascota de inmediato (4.17). Es lo que hay hoy, no una decisión cerrada: cuando exista envío de correo hay que resolver si esa confirmación pasa a ser condición de algo — ver la nota de 4.17.
+
 > Este es el único punto del sistema donde el paso 3 de 4.7 puede crear un Usuario nuevo. Para cualquier otro tipo_usuario, Google solo vincula cuentas ya existentes (2.5, 4.7).
 
 ### 4.10 Alta de una clínica y de su cuenta administrativa
@@ -508,6 +521,10 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 3. El orden importa: si la escritura en base falla, el backend intenta borrar el objeto recién subido y, si no puede, lo deja registrado en el log. La consecuencia asumida es que puede quedar un objeto huérfano en el bucket, nunca una fila que apunte a un archivo inexistente — el error visible para el usuario tiene que ser "no se subió", no "se subió y no se puede abrir".
 4. Descarga: el bucket es privado. Cada lectura devuelve una URL prefirmada de vida corta, generada en el momento tras evaluar los permisos. La URL no se persiste ni se reutiliza.
 5. El cliente no elige la clave del objeto ni la ve: la genera el backend. Una clave elegida por el cliente sería una vía para escribir sobre el archivo de otra mascota.
+6. **Foto de perfil.** Un adjunto se puede marcar como foto de la mascota (`es_foto_perfil`, Modelo de Datos, 4.8), al subirlo o después, y solo si es de tipo **foto**. Marcar uno **desmarca al que estuviera marcado, en la misma operación**: la mascota tiene como máximo una foto de perfil vigente. La desmarcada no se da de baja — queda como un adjunto más, que es lo que siempre fue. Dar de baja el adjunto marcado deja a la mascota sin foto de perfil: no se elige una sucesora sola.
+7. Quién puede marcarla es quien puede subir adjuntos de esa mascota (regla 2.4 y motor de permisos): no es una operación aparte con su propio alcance.
+
+> **Desmarcar la anterior lo hace el backend, no el cliente.** Resolverlo en dos pedidos —desmarcar una, marcar la otra— abre la ventana en la que la mascota tiene dos fotos de perfil o ninguna, y obliga a cada cliente a recordar cuál era la vigente para poder apagarla. Es una sola operación y el estado intermedio no existe.
 
 ### 4.15 Recordatorios de una Cita al tutor
 
@@ -537,13 +554,21 @@ El calendario existe para que la mascota llegue a su control; el recordatorio es
 
 ### 4.17 Alta de una mascota por el tutor
 
-1. El tutor autenticado carga nombre, especie, raza, fecha de nacimiento, sexo y peso. **No elige clínica**: el formulario no la ofrece, porque en este camino no hay ninguna.
+1. El tutor autenticado carga nombre, especie, raza, fecha de nacimiento, sexo y peso, y **opcionalmente una foto de la mascota**. **No elige clínica**: el formulario no la ofrece, porque en este camino no hay ninguna.
 2. Se valida el consentimiento de datos del tutor. Ya está otorgado desde su registro (4.9), pero se verifica igual: es la misma condición que exige el alta por la clínica (regla 2.2), y el alta no puede depender de por dónde entró.
 3. Se crea el Paciente con `tutor_id` = el tutor del token, que queda como dueño. Nunca se toma del cuerpo del pedido: sería dar de alta una mascota a nombre de otro.
 4. No se crea ningún vínculo con clínica. La mascota existe, es legible por su dueño y no la ve nadie más.
 5. Se registra la creación en Auditoría.
+6. Si el tutor eligió una foto, se sube con el Paciente ya creado por el proceso de Adjuntos (4.14), marcada como foto de perfil. **No es parte de la transacción del alta**, por el mismo motivo que los antecedentes: cuelga de un `paciente_id` que antes no existe. Si la subida falla, la mascota queda dada de alta sin foto y la aplicación lo dice — el alta no se revierte por eso.
+7. Con el Paciente ya creado, la aplicación le ofrece **cargar los antecedentes** que la mascota trae de antes (4.23). Es un paso ofrecido y no un paso del alta: se puede saltear entero, y la mascota queda dada de alta igual.
 
 > El número de chip no se carga acá: lo pone el veterinario (3.2).
+
+> **El paso 7 no es parte de esta transacción y no puede serlo.** Los antecedentes cuelgan de un `paciente_id` que todavía no existe mientras el alta no terminó, así que primero se crea la mascota y después se cargan — y si el tutor abandona la aplicación en el medio, lo que queda es una mascota sin antecedentes, que es un estado válido, y no un alta a medias.
+>
+> Es también el motivo por el que **este camino exige conexión de punta a punta** (Sincronización sin Conexión, 5).
+>
+> **El alta no exige tener el correo confirmado.** Hoy no hay proveedor de correo configurado —no hay nada que confirmar— y la mascota se crea con la cuenta recién registrada en 4.9. **Queda pendiente de definir qué pasa cuando el envío de correo exista**: puede que ahí se exija la confirmación antes de escribir historial, o puede que se mantenga así a propósito, porque el alta de la primera mascota es el único momento en que el tutor está dispuesto a cargar todo de una vez. No se decide acá, y no se asume ninguna de las dos.
 >
 > Una mascota sin clínica **no admite citas** (regla 2.2), y es lo único que le falta hasta que el tutor comparta. Todo lo demás —la ficha, el peso, los adjuntos que él suba— funciona desde el primer minuto. Es deliberado que la aplicación sirva para algo antes de que exista una veterinaria de por medio: esa era exactamente la fricción que el modelo anterior imponía.
 
@@ -631,6 +656,27 @@ Que un veterinario no va a estar disponible (Modelo de Datos, 4.19).
 > **No mira hacia atrás.** No toca Consultas atendidas ya asentadas ni Citas cumplidas: si el sistema dice que esa persona atendió el martes, una ausencia cargada después no lo desmiente. Ahí hay un error de carga en uno de los dos y se corrige el que esté mal.
 
 > **La baja de la ausencia no reasigna nada.** Las citas desasignadas siguen sin profesional y se reparten como cualquier otra. Devolverlas a quien las tenía sería adivinar que nadie las movió mientras tanto, y pisaría una asignación que alguien pudo haber hecho a propósito.
+
+### 4.23 Carga de antecedentes por el tutor
+
+La mayoría de las mascotas que se dan de alta ya tienen historia: vacunas puestas, alergias conocidas, una medicación en curso. Este proceso es cómo eso entra a Wayka, y **no está atado al alta**: se llega desde el onboarding la primera vez (4.17) y desde la ficha de la mascota siempre.
+
+1. El tutor —dueño o co-tutor con edición— elige una mascota que alcanza y vigente (regla 2.2), y elige **qué tipo de antecedente** carga: vacuna, alergia, medicación o "otra cosa que pasó". La interfaz llega con **vacuna preseleccionada**, que es el antecedente que más tutores tienen a mano; elegir otro es un toque y no un camino distinto.
+2. Completa el formulario del tipo, que pide menos que el del veterinario: obligatorio es lo que identifica al antecedente —el nombre de la vacuna, el alérgeno, la droga— y la fecha; el resto es opcional (regla 2.2 y Modelo de Datos, 4.5).
+3. La fecha se declara **con su precisión**: día, mes o solo año. La interfaz no obliga a bajar de nivel — "en 2023" es una respuesta completa — y **arranca en año**, que es la precisión del caso normal cuando el dato sale de una libreta vieja. Precisar el mes o el día es la excepción y la decide el tutor. Es la única diferencia con el formulario del veterinario, que sí arranca en día porque escribe lo que está pasando hoy.
+4. Se persiste según el tipo:
+   - **vacuna**, **alergia** y "otra cosa que pasó" son un **Evento clínico** con `usuario_id` = el usuario autenticado, `cargado_por = tutor` y `consulta_id` en NULL, que es lo que el modelo ya llamaba una carga histórica (Modelo de Datos, 4.5). "Otra cosa que pasó" se guarda con el `tipo` que el tutor elija entre consulta, cirugía, control y urgencia, y su contenido es la descripción libre.
+   - **medicación en curso** es una **Medicación** con `fecha_fin` NULL y `cargado_por = tutor` (4.3). Si el paciente ya tiene esa droga activa, se rechaza por la regla 2.2 y el rechazo dice cuál es la que ya está y quién la cargó.
+5. Se registra la creación en Auditoría, con el usuario que la originó, igual que cualquier otra escritura del historial.
+6. El tutor puede cargar varios, uno atrás del otro. Cada uno es su propia operación: que el tercero se rechace no descarta los dos anteriores.
+7. **Documentos de la libreta sanitaria**: la subida de fotos o PDF es el proceso de Adjuntos que ya existe (4.14), a nivel `paciente_id` y sin `evento_id`. No hace falta asociar cada foto a un antecedente puntual — pedirlo convertiría fotografiar una libreta en una tarea de clasificación.
+8. Un antecedente ya cargado lo edita y lo da de baja el tutor, en cualquier momento, **siempre que sea de origen `tutor`** (regla 3.2). El veterinario también puede corregirlo.
+
+> **No hay ningún paso de verificación, y es deliberado** (Modelo de Datos, sección 1). El antecedente queda cargado y visible desde que se guarda, marcado como declarado por el tutor. Nadie lo aprueba.
+>
+> **La vista de urgencia lo incluye** y lo distingue de lo que escribió un profesional de forma imposible de pasar por alto (Modelo de Datos, 4.5). Es la consecuencia más delicada de todo este proceso y por eso la marca es parte del contrato y no una decisión de cada pantalla.
+>
+> **Qué hace el veterinario con esto.** Lo lee como contexto al atender: no tiene que aprobarlo, copiarlo ni convertirlo. Si confirma clínicamente una alergia declarada, lo que carga es su propio registro con su propio origen — y la declaración del tutor se queda donde está, porque también es cierta.
 
 ## 5. Fuera de alcance de este documento
 

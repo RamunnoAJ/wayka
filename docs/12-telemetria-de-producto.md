@@ -83,10 +83,17 @@ El corte `plataforma` de todos estos eventos es lo que valida la **paridad web/m
 | `app_abierta_desde_push` | Cliente | `notificacion_tipo` | Numerador de la tasa de apertura de push. El denominador es `notificacion_despachada`. |
 | `notificacion_despachada` | Backend | `notificacion_tipo`, `resultado` (enviada / fallida) | Entregabilidad del canal. Sale del proceso de Reglas de Negocio, 4.15. |
 | `notificaciones_desactivadas` | Cliente | — | **El mejor aviso temprano de fatiga.** Un tutor que apaga los avisos en Ajustes no se va todavía, pero se fue del único canal que lo traía de vuelta. |
+| `paso_de_antecedentes_resuelto` | Cliente | `desde` (onboarding / ficha), `resultado` (cargo / salteo) | **El embudo del paso de antecedentes** (Reglas de Negocio, 4.23): cuántos tutores llegan a la pantalla y cuántos siguen de largo. `desde` separa al que carga en el alta del que vuelve después — si el segundo es ~0, la entrada desde la ficha no se está encontrando. |
 | `adjunto_subido` | Backend | `tipo`, `rol_del_autor` | **Fichas con al menos un adjunto**: señal de que el historial se percibe como el archivo real de la mascota y no como una copia del de la clínica. |
 | `invitacion_cotutor_enviada` | Backend | `nivel` | Denominador del embudo de co-tutor. |
 | `invitacion_cotutor_canjeada` | Backend | `nivel`, `horas_hasta_canje` | **Embudo de co-tutor**: enviadas → canjeadas → vencidas. Es el único canal de crecimiento orgánico del MVP y ya está modelado (Modelo de Datos, 4.15). `cuenta_nueva` separa al que ya era usuario del que llegó por la invitación. |
 | `mascota_compartida_con_clinica` | Backend | `origen` | Si el tutor usa el compartir con clínica o solo lo usa la clínica. |
+
+> **La carga de un antecedente no emite ningún evento de uso, y es deliberado.** La pregunta que importa —cuántas fichas nacen con historia— se contesta contando las filas con `cargado_por = tutor` sobre el Evento clínico y la Medicación (sección 9). Es el dato real y no una muestra, y un evento no podría contestarla igual de bien: agrupar por ficha exige el `paciente_id`, que es exactamente lo que ninguna propiedad puede llevar (sección 2). Es el mismo principio de "un evento que nadie mira se saca", aplicado antes de crearlo.
+>
+> Lo que sí queda acá es lo único que no está en ninguna tabla: cuántos tutores **vieron** el paso y lo saltearon. Sin ese denominador, un salteo masivo no se distingue de "los tutores no tenían nada que cargar".
+>
+> Y por eso lo emite el **cliente**, que es una excepción aparente al principio de que lo que el backend ve lo emite el backend: no es que el backend lo vea y lo delegue, es que **no puede verlo**. Le llega el mismo pedido venga el tutor del onboarding o de la ficha, y hacer que el cuerpo de una escritura clínica cargue una pista de telemetría para distinguirlos sería meter la medición adentro del contrato del historial.
 
 ### 5.4 Salud del offline y del rendimiento percibido
 
@@ -141,6 +148,8 @@ Definidas con numerador y denominador, porque una métrica sin denominador es un
 | **Fuga de notificaciones** | `notificaciones_desactivadas` acumulado / tutores activos | Cualquier tendencia al alza es una alarma |
 | **Embudo de co-tutor** | canjeadas / enviadas. Las vencidas no salen de un evento: se cuentan sobre `invitacion_de_co_tutor` (`expira_at` pasado, sin `usado_at`) | — |
 | **Fichas con adjunto** | pacientes con ≥1 `adjunto_subido` / pacientes activos | — |
+| **Fichas con antecedentes** | pacientes dados de alta por un tutor con ≥1 Evento clínico o Medicación de `cargado_por = tutor` / pacientes dados de alta por un tutor. **No sale de un evento de uso**: se cuenta por SQL sobre las dos tablas del historial | Es la medida de si la ficha nace con contenido o vacía |
+| **Uso del paso de antecedentes** | `paso_de_antecedentes_resuelto` con `resultado = cargo` / el total de ese evento, cortado por `desde` | Un salteo casi total es un paso mal puesto, no un tutor sin datos |
 | **Sesiones offline** | `sesion_servida_offline` / sesiones móviles del tutor | Si es ~0, el offline no está resolviendo nada |
 | **Conflictos** | `sincronizacion_conflicto` × 100 / sincronizaciones, y `rechazo_de_mutacion` aparte | Un motivo de rechazo que se repite es una regla que el cliente no está aplicando |
 

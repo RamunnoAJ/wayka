@@ -8,8 +8,14 @@ Versión 1.0 · Documento técnico de referencia
 Este documento define el modelo de datos para la fase de MVP de Wayka: historial clínico colaborativo y calendario de eventos, con un piloto de una única clínica veterinaria. El modelo se diseñó bajo tres criterios rectores:
 
 - **Portabilidad**: los registros deben poder ser leídos por un veterinario ajeno a la clínica de origen en una futura Fase 2 (matching geolocalizado de urgencias).
-- **Permisos claros**: el veterinario es la fuente de verdad clínica; el tutor es el dueño de la ficha de su mascota y de quién la ve. El tutor nunca escribe dato clínico; sí edita los datos no clínicos de la mascota y decide con qué clínicas y con qué otras personas la comparte.
+- **Permisos claros**: el veterinario es la fuente de verdad clínica; el tutor es el dueño de la ficha de su mascota y de quién la ve. El tutor **escribe los antecedentes de su propia mascota** —lo que sabe o tiene anotado de antes de Wayka—, y todo lo que escribe queda marcado como suyo (`cargado_por = tutor`, 4.5): nunca crea ni edita un registro del veterinario, y lo que carga no se confunde con lo que escribió un profesional. Además edita los datos no clínicos de la mascota y decide con qué clínicas y con qué otras personas la comparte.
 - **Trazabilidad y no destrucción**: ningún dato clínico se borra físicamente; todo cambio queda auditado. Esto responde al riesgo legal de responsabilidad ante errores identificado en la etapa de análisis de viabilidad (Ley 25.326 de Protección de Datos Personales).
+
+> **Hasta esta versión el tutor no escribía ni una línea de dato clínico**, y el criterio decía exactamente eso. Cambió porque casi ninguna mascota llega a Wayka sin historia: las vacunas puestas, las alergias conocidas y la medicación que está tomando existen, solo que en una libreta de papel o en la memoria del dueño, y el día del alta la única persona que puede volcarlas es él. Una ficha que arranca vacía y espera a la próxima consulta para tener algo adentro no sirve para lo que la app promete.
+>
+> La regla que reemplaza al "nunca escribe" no es "ahora escribe". Es que **quién declara cada registro es un dato del registro** (`cargado_por`) y no se pierde nunca. El veterinario sigue siendo la fuente de verdad: lo que carga el tutor es información declarada, se lee como contexto, se muestra siempre marcada como tal, y el tutor sigue sin poder tocar una línea de lo que escribió un profesional.
+>
+> Lo que **no** se agrega es un proceso de verificación: un antecedente del tutor no queda pendiente de que alguien lo apruebe. Un estado así le impondría al veterinario una tarea de curaduría que nadie pidió, y dejaría en un limbo —ni dato ni ausencia de dato— justo la información que hay que leer en una urgencia. Se marca y se muestra; el profesional la pondera como pondera lo que le cuenta el dueño en el mostrador.
 
 Alcance del MVP: **un paciente puede ser atendido por varias clínicas y visto por varios tutores**, y las dos cosas se resuelven con tablas de vínculo revocables. La mascota tiene siempre un único dueño —el tutor que la dio de alta, o aquel a cuyo nombre la dio de alta la clínica— y es él quien otorga y retira todo acceso.
 
@@ -31,10 +37,11 @@ Paciente
                 │         └── veterinario_id (quién atendió)
                 │
                 ├──N Evento clínico ──N Adjuntos
-                │         ├── veterinario_id (trazabilidad)
+                │         ├── usuario_id (autoría) + cargado_por (veterinario | tutor)
                 │         └── consulta_id (nullable: en qué atención se escribió)
                 │
                 ├──N Medicación (activa si fecha_fin IS NULL)
+                │         └── usuario_id (autoría) + cargado_por (veterinario | tutor)
                 └──N Cita (calendario) ──N Notificación
                           └── clínica_id (quién la atiende)
 
@@ -186,13 +193,31 @@ Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No e
 |---|---|---|
 | id | UUID / PK | Identificador único. |
 | paciente_id | UUID / FK | — |
-| veterinario_id | UUID / FK | Quién cargó el evento (trazabilidad). |
+| usuario_id | UUID / FK | Cuenta que cargó el evento (trazabilidad). Referencia a **Usuario** y no a Veterinario, porque escriben los dos roles. |
+| cargado_por | enum | `veterinario` \| `tutor`. Quién declara el registro. NOT NULL, default `veterinario`. |
 | tipo | enum | Consulta / vacuna / cirugía / control / urgencia / medicación / alergia. |
 | fecha | date | — |
-| descripción | text | Texto libre del veterinario. |
+| fecha_precision | enum | `dia` \| `mes` \| `anio`. Con qué precisión se conoce `fecha`. NOT NULL, default `dia`. |
+| descripción | text | Texto libre de quien lo carga. |
 | diagnóstico | text (nullable) | — |
 | campo_estructurado | JSON (nullable) | Datos estructurados para tipos críticos (ver nota). |
 | consulta_id | UUID / FK (nullable) | Consulta atendida (4.16) en la que se escribió. NULL cuando no hay asiento — una carga histórica, o una atención que nadie asentó. |
+
+> **`veterinario_id` se llamaba así y era una FK a Veterinario**; pasó a `usuario_id` cuando el tutor empezó a cargar antecedentes (sección 1). Un registro con `cargado_por = tutor` no tiene veterinario, y dejar el campo nullable habría dejado sin autoría justo a las filas que más necesitan decir de quién son. La forma no es nueva en el modelo: es la misma que `Adjuntos.subido_por_usuario_id` (4.8), que ya resolvía este problema porque los adjuntos los suben los dos roles. Sigue siendo **autoría y no permiso**: no se reasigna nunca, y de él cuelgan la regla de baja (Reglas de Negocio, 2.4) y el hecho de que la baja de un Veterinario no borre lo que escribió (Reglas de Negocio, 4.13).
+>
+> Quién es el veterinario y de qué clínica se sigue leyendo entero, por el Usuario. Lo que se perdió es poder llegar al Veterinario con un JOIN directo, y es el precio de que la tabla admita dos tipos de autor.
+
+> **`cargado_por` no es lo mismo que mirar el tipo de usuario del autor**, aunque hoy coincidan. Es la afirmación de qué clase de registro es esto —un acto médico documentado o un antecedente declarado por el dueño— y esa afirmación se congela al escribir. Es lo que hace que el marcado de la vista de urgencia no dependa de ir a buscar la cuenta del autor, que puede haberse dado de baja.
+>
+> **No es editable.** Ni el tutor ni el veterinario cambian el origen de un registro ya cargado: un antecedente declarado no se convierte en acto médico porque alguien toque un campo. Corregir un origen mal cargado es dar de baja el registro y escribirlo de nuevo.
+>
+> El nombre no es `origen` a propósito: `origen` ya significa otras dos cosas en este modelo —el de Consulta atendida (4.16) y el del Vínculo con clínica (4.13)—, y un tercero con un significado distinto en las dos tablas centrales del historial sería ambigüedad gratuita.
+
+> **`fecha_precision` existe porque el tutor rara vez tiene el día exacto.** Una libreta vieja dice "2023" o "en marzo", y obligar a inventar un día convierte un dato cierto en uno falso con apariencia de preciso. La fecha se sigue guardando como un `DATE` completo, rellenando con `01` lo que no se sabe —"fue en 2023" se guarda `2023-01-01` con `fecha_precision = anio`—, y la interfaz muestra solo lo que el campo dice que se conoce.
+>
+> Se eligió esto por sobre partir la fecha en componentes nullables (año, mes, día por separado). Un `DATE` con un enum al lado se sigue ordenando, filtrando por rango e indexando con las mismas consultas que ya existen; con componentes sueltos, todo filtro por período y la vista de urgencia habría que reescribirlos. El costo asumido es que el `DATE` guardado no es exactamente lo que la persona declaró, y por eso **nunca se muestra sin leer la precisión al lado**.
+>
+> Para `cargado_por = veterinario` siempre es `dia`, y se valida (Reglas de Negocio, 2.2): el profesional carga en el momento, con la fecha delante.
 
 > **`cita_id` ya no existe en esta entidad**: la reemplazó `consulta_id`. La FK a Cita vivía acá desde antes de que existiera la Consulta atendida, y sostenía la regla "una cita se cumple con un solo evento" con un índice único. Esa regla dejó de ser cierta: de una misma atención cuelgan varios eventos —se pone una vacuna y se registra una alergia—, y con las dos FK al lado había que elegir arbitrariamente cuál de los eventos se quedaba con la cita. La cadena es una sola y no se duplica: **Cita** (lo que se planeó) → **Consulta atendida** (lo que ocurrió) → **Evento clínico** (lo que se escribió). Qué cita cumplió un evento se sigue leyendo entero, por su consulta.
 >
@@ -208,12 +233,22 @@ Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No e
 
 El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tipo` del evento. No es un JSON libre: si no cumple la forma de su tipo, la operación se rechaza antes de escribir (regla 2.2).
 
-| tipo | Forma exigida de campo_estructurado |
-|---|---|
-| vacuna | `{ nombre_vacuna: string (requerido), lote: string (requerido), fecha_proxima_dosis: date (opcional) }` |
-| medicación | `{ nombre_droga: string (requerido), dosis: string (requerido), frecuencia: string (requerido) }` |
-| alergia | `{ alergeno: string (requerido), severidad: enum leve/moderada/severa (requerido), reaccion: string (opcional) }`. `fecha` es la fecha de detección. |
-| consulta, cirugía, control, urgencia | Debe ser NULL. Enviar un valor se rechaza. |
+Las **claves son las mismas para los dos orígenes**; lo que cambia es qué es obligatorio. Un antecedente del tutor no puede exigir los campos que solo tiene el profesional que atendió.
+
+| tipo | Con `cargado_por = veterinario` | Con `cargado_por = tutor` |
+|---|---|---|
+| vacuna | `{ nombre_vacuna: string (requerido), lote: string (requerido), fecha_proxima_dosis: date (opcional) }` | Las mismas claves, con **`lote` opcional**. |
+| medicación | `{ nombre_droga: string (requerido), dosis: string (requerido), frecuencia: string (requerido) }` | Las mismas claves, con **`dosis` y `frecuencia` opcionales**. |
+| alergia | `{ alergeno: string (requerido), severidad: enum leve/moderada/severa (requerido), reaccion: string (opcional) }`. `fecha` es la fecha de detección. | Las mismas claves, con **`severidad` opcional**. |
+| consulta, cirugía, control, urgencia | Debe ser NULL. Enviar un valor se rechaza. | Igual: NULL. La descripción libre y la fecha alcanzan. |
+
+> **Qué se afloja y por qué, uno por uno.** El **lote** está impreso en el frasco y lo copia quien vacuna; el dueño tiene la libreta con el nombre de la vacuna y ningún número. La **severidad** de una alergia es un juicio clínico graduado, y pedirle al tutor que elija entre leve, moderada y severa es pedirle que emita ese juicio: si no la sabe, el campo queda vacío y el veterinario la gradúa cuando la vea. La **dosis** y la **frecuencia** de lo que el animal está tomando el dueño las conoce a veces con precisión y a veces como "media pastilla a la mañana" — el campo es texto libre justamente para eso, pero exigirlo dejaría afuera al que solo sabe la droga.
+>
+> Lo que **no** se afloja es la clave que identifica de qué se está hablando: `nombre_vacuna`, `alergeno` y `nombre_droga` siguen siendo obligatorios en los dos orígenes. Un antecedente que no dice de qué es no es un antecedente.
+>
+> **`fecha_proxima_dosis` es el campo que más rinde en la carga del tutor**, aunque sea opcional: es lo que está escrito en la libreta al lado de la vacuna, y es lo que permite ofrecerle agendar el turno en vez de esperar a que se acuerde.
+
+> **No hace falta un tipo "evento general"** para lo que el tutor quiera contar y no encaje en vacuna, alergia o medicación —una cirugía vieja, una consulta en otra veterinaria, un diagnóstico—. Eso ya es un evento de `tipo = consulta`, `cirugía`, `control` o `urgencia`, que son exactamente los tipos que no llevan campo estructurado: descripción libre y fecha. Agregar un tipo más habría duplicado los que ya existen con otro nombre.
 
 > El campo se valida contra un esquema fijo en vez de aceptarse como JSON libre porque el motivo entero de tenerlo es la lectura en urgencia: un dato que cada clínica escribe con las claves que quiera no es consultable, y equivale a texto libre en otro envoltorio. La contrapartida asumida es que agregar un tipo estructurado nuevo pide tocar el backend, no solo cargar datos.
 >
@@ -223,20 +258,32 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 >
 > La vista de urgencia de un paciente se arma con sus Eventos clínicos de `tipo = alergia` sin `deleted_at`, junto con sus Medicaciones activas (`fecha_fin` NULL) y sus vacunas.
 
+> **Lo que declaró el tutor entra en la vista de urgencia, y se marca de forma imposible de pasar por alto.** No se filtra: una alergia que el dueño conoce y ninguna clínica registró es exactamente el dato que salva a un animal en una urgencia, y esconderla por no venir de un profesional sería tirar el motivo entero de esta pantalla.
+>
+> Pero un veterinario ajeno que la lee en treinta segundos tiene que saber, sin buscarlo, qué está mirando. La marca es del **contrato, no del frontend**: la API devuelve `cargado_por` en cada registro de la vista, y las dos plataformas están obligadas a distinguir los dos orígenes con algo que se lea de un vistazo —no un icono chico ni una diferencia de color sola (Design System)—, y a nombrar al autor: "lo declaró el tutor", no "sin verificar". El registro no está mal: está declarado por otra persona.
+>
+> Los dos grupos **se muestran juntos y no en dos listas separadas**. Partir la vista obligaría a leer dos veces para responder una sola pregunta —"¿a qué es alérgico este animal?"— y la segunda lista es la que se saltea el que va apurado, que es el caso para el que la pantalla existe.
+
 ### 4.6 Medicación
 
 | Campo | Tipo | Descripción |
 |---|---|---|
 | id | UUID / PK | Identificador único. |
 | paciente_id | UUID / FK | — |
-| veterinario_id | UUID / FK | Quién indicó el tratamiento. No se reasigna al cerrarlo ni al corregirlo. |
+| usuario_id | UUID / FK | Cuenta que cargó el tratamiento. Referencia a **Usuario** y no a Veterinario, por el mismo motivo que en 4.5. No se reasigna al cerrarlo ni al corregirlo. |
+| cargado_por | enum | `veterinario` \| `tutor`. NOT NULL, default `veterinario`. Con las mismas reglas que en 4.5: no es editable y se congela al escribir. |
 | nombre_droga | string | — |
-| dosis | string | — |
-| frecuencia | string | — |
+| dosis | string (nullable) | Obligatoria con `cargado_por = veterinario`; opcional cuando la declara el tutor. |
+| frecuencia | string (nullable) | Misma regla que `dosis`. |
 | fecha_inicio | date | — |
+| fecha_precision | enum | `dia` \| `mes` \| `anio`. Aplica a `fecha_inicio`, con el mismo criterio que en 4.5. NOT NULL, default `dia`. |
 | fecha_fin | date (nullable) | NULL indica medicación activa. Filtro clave para vista de urgencia. |
 
-> `veterinario_id` no figuraba en la primera versión de esta tabla, pero las Reglas de Negocio ya lo exigían en dos lugares: la baja lógica está reservada al *veterinario autor del registro* (regla 2.9) y la baja de un Veterinario "no cascadea sobre lo que ese veterinario escribió: los Eventos clínicos y las Medicaciones conservan su autoría" (proceso 4.7). Sin el campo, ninguna de las dos reglas era evaluable.
+> La autoría no figuraba en la primera versión de esta tabla, pero las Reglas de Negocio ya la exigían en dos lugares: la baja lógica está reservada al autor del registro (regla 2.4) y la baja de un Veterinario "no cascadea sobre lo que ese veterinario escribió: los Eventos clínicos y las Medicaciones conservan su autoría" (proceso 4.13). Sin el campo, ninguna de las dos reglas era evaluable. Entró como `veterinario_id` y pasó a `usuario_id` al abrirse la carga del tutor, por el motivo explicado en 4.5.
+
+> **La medicación que declara el tutor es la que el animal está tomando ahora**, y por eso nace activa (`fecha_fin` NULL). Un tratamiento que ya terminó no es medicación vigente: es un hecho del pasado y se carga como Evento clínico de `tipo = medicación`, que es la distinción que estas dos entidades ya sostenían (4.5).
+>
+> La regla de **una activa por droga** (Reglas de Negocio, 2.2) se evalúa sobre las activas del paciente **sin mirar el origen**, y por lo tanto una medicación declarada por el tutor bloquea la carga de la misma droga por el veterinario. Es lo correcto: dos filas activas de la misma droga son exactamente la ambigüedad que la regla existe para evitar, y no deja de serlo porque una la haya escrito el dueño. Lo que el veterinario hace en ese caso es cerrar la declarada y abrir la suya —el mismo gesto con el que corrige una dosis (4.3)—, y el rechazo tiene que decirle que la activa que le estorba la cargó el tutor, o va a parecer un error del sistema.
 
 > `fecha_fin` registra el **cierre efectivo** del tratamiento, no su duración planificada: una fecha futura dejaría de contar como activa a una medicación que el paciente todavía está recibiendo, y "activa" está definido acá como `fecha_fin IS NULL`. Prescribir "por 7 días" se registra hoy en `frecuencia` y se cierra el día que termina. Modelar la duración planificada exigiría separar *fin previsto* de *fin efectivo*, y queda fuera del MVP.
 
@@ -259,7 +306,7 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 
 > `fecha_programada` era una fecha sin hora en la primera versión de esta tabla. Pasó a timestamp porque una agenda de veterinaria sin hora no es una agenda: dos cirugías el mismo martes no son intercambiables, y el calendario no podía mostrar más que "hay algo ese día". El costo asumido es que ahora hay una zona horaria en juego — se persiste en UTC y se presenta en la `zona_horaria` de la clínica que atiende a la mascota (4.3).
 >
-> `veterinario_id` entró después de la primera versión de esta tabla, y no significa lo mismo que en Evento clínico o Medicación. Ahí el campo es **autoría** —quién escribió el registro clínico, dato que no se reasigna nunca—; acá es **asignación**: a quién le toca atender, y se puede cambiar mientras la cita siga pendiente. Quién la programó y quién la reagendó sigue estando en Auditoría, que es donde se lo consulta.
+> `veterinario_id` entró después de la primera versión de esta tabla, y no significa lo mismo que el `usuario_id` de Evento clínico o Medicación. Allá el campo es **autoría** —quién escribió el registro, dato que no se reasigna nunca—; acá es **asignación**: a quién le toca atender, y se puede cambiar mientras la cita siga pendiente. Quién la programó y quién la reagendó sigue estando en Auditoría, que es donde se lo consulta.
 >
 > Es **nullable a propósito**. Una cita puede nacer "de la clínica" y repartirse después, y una clínica chica que no divide agenda no tiene por qué elegir profesional en cada turno. Las citas ya cargadas cuando se agregó el campo quedaron sin asignar, que es lo que efectivamente eran: inventarles un profesional habría falseado el dato.
 >
@@ -287,10 +334,15 @@ El esquema de `campo_estructurado` es fijo y lo valida el backend según el `tip
 | nombre_archivo | string | Nombre original con el que se subió, para que la descarga no se llame como la clave. |
 | content_type | string | Tipo MIME de **lo que sirve la URL de descarga**, que es la vista previa cuando existe. |
 | tamano_bytes | bigint | Tamaño del **original**, validado contra el máximo permitido antes de escribir. |
+| es_foto_perfil | boolean | Marca al adjunto que la aplicación muestra como foto de la mascota. `NOT NULL`, default `false`. Como máximo uno vigente por Paciente (Reglas de Negocio, 4.14). |
 
 > `paciente_id` pasó a ser obligatorio y `evento_id` quedó como el único nullable de los dos. La primera versión los tenía a ambos nullable y mutuamente excluyentes; con esa forma, resolver el alcance de un adjunto colgado de un evento exigía ir a buscar el evento para llegar a la mascota, y nada impedía una fila con las dos FK vacías. Todo adjunto pertenece a una mascota; que además documente un evento es información adicional.
 
 > `subido_por_usuario_id` no figuraba en la primera versión de esta tabla. Lo exige la regla de baja (Reglas de Negocio, 2.4): cada rol retira los adjuntos que subió, y sin el campo esa regla no es evaluable.
+
+> **La foto de perfil es un adjunto marcado y no un campo del Paciente.** Un `foto_url` colgado de la mascota habría sido una segunda ruta de subida —con su propia validación de MIME, su propio techo de tamaño y su propio objeto en el bucket— para un archivo que es exactamente lo mismo que ya sube el proceso de Adjuntos. Con el flag, la foto entra por el camino de siempre y hereda el alcance, la Auditoría y la baja lógica de cualquier adjunto; lo único que agrega es cuál de todos se muestra.
+>
+> **La unicidad la sostiene la capa de negocio**: marcar una foto desmarca a la anterior en la misma operación (Reglas de Negocio, 4.14). Un índice único parcial sobre `paciente_id` para las filas marcadas y vigentes es igual de válido como red de seguridad, y queda a criterio de la implementación — el contrato es "como máximo una", no cómo se hace cumplir.
 
 > `archivo_url` se reemplazó por `clave_de_archivo`. El bucket es privado: no existe una URL estable que guardar. La API expone en cada lectura una URL prefirmada de vida corta, que se calcula en el momento y no se persiste — guardar una URL sería guardar un permiso vencido (Arquitectura, 3.4).
 
@@ -420,7 +472,7 @@ Qué clínicas atienden a una mascota. Es lo que reemplaza a la vieja FK `Pacien
 >
 > `otorgado_por_usuario_id` es nullable **solo para `origen = migración`**: los vínculos que existían antes de que compartir fuera una acción no tienen autor real, e inventarle uno falsearía el dato. Es el mismo criterio con el que la Auditoría deja `usuario_id` en NULL para las acciones del sistema (4.10).
 >
-> **Revocar no toca el historial.** Los Eventos clínicos, la Medicación y los Adjuntos que esa clínica escribió quedan donde están, con su autoría: `veterinario_id` identifica a quien los escribió y no depende de que el vínculo siga vivo. Lo que la clínica pierde es poder leer y escribir de ahí en adelante, y que la mascota figure en su cartera.
+> **Revocar no toca el historial.** Los Eventos clínicos, la Medicación y los Adjuntos que esa clínica escribió quedan donde están, con su autoría: `usuario_id` identifica a quien los escribió y no depende de que el vínculo siga vivo. Lo que la clínica pierde es poder leer y escribir de ahí en adelante, y que la mascota figure en su cartera.
 
 ### 4.14 Acceso de co-tutor
 
@@ -577,7 +629,7 @@ Cuándo un veterinario no está disponible para atender. Existe para que la gril
 
 | Entidad | Quién escribe | Quién lee |
 |---|---|---|
-| Evento clínico, Medicación | Solo veterinario, sobre los pacientes vinculados a su clínica: cualquiera del plantel edita y da de baja, no solo el autor (Reglas de Negocio, 3.2) | Veterinario (todo) + el dueño y sus co-tutores, en cualquier nivel (solo lectura) |
+| Evento clínico, Medicación | **Veterinario**, sobre los pacientes vinculados a su clínica: escribe con `cargado_por = veterinario` y cualquiera del plantel edita y da de baja, no solo el autor (Reglas de Negocio, 3.2). **Tutor dueño y co-tutor con edición**, solo antecedentes propios: escribe con `cargado_por = tutor` y edita o da de baja **únicamente los registros de ese origen**. Ningún rol cambia el `cargado_por` de un registro existente | Veterinario (todo) + el dueño y sus co-tutores, en cualquier nivel |
 | Cita / Calendario | Veterinario y clínica_admin, en su propia clínica: agendan, reagendan y reparten. El dueño y el co-tutor con edición confirman y reagendan. **La baja es del veterinario y del tutor**, no del clínica_admin | Veterinario + el dueño y sus co-tutores + clínica_admin, sobre las citas de su propia clínica |
 | Adjuntos | Veterinario + el dueño y el co-tutor con edición. Cada uno retira los que subió | Veterinario + el dueño y sus co-tutores |
 | Dispositivo | Cada usuario los suyos (los registra al entrar y los da de baja al salir) | Cada usuario los suyos |
@@ -600,6 +652,12 @@ Cuándo un veterinario no está disponible para atender. Existe para que la gril
 | Evento de telemetría | Cada usuario, solo los suyos, por la ruta de ingesta; y el backend, para lo que emite él | Nadie por API en el MVP: se consulta por SQL (Telemetría de Producto, 6) |
 
 > El alcance del veterinario sobre la ficha de Tutor no está acotado a su clínica, a diferencia del que tiene sobre Paciente. El motivo es el proceso de alta de paciente (Reglas de Negocio, 4.1): la ficha del tutor se busca y se completa antes de que exista ningún Paciente que vincule a esa persona con una clínica, así que no hay dato sobre el cual acotarla. Es una excepción deliberada, a revisar cuando exista la entidad Paciente.
+
+> **El tutor escribe en las dos entidades del historial, y esa es la novedad de esta versión** (sección 1). Lo que lo acota no es un permiso temporal ni un estado de la ficha: es el `cargado_por` del registro. Escribe filas con `cargado_por = tutor`, y edita y da de baja esas y ninguna otra — sobre un registro del veterinario no tiene ni edición ni baja, en ningún nivel y en ningún momento. El veterinario, al revés, alcanza todo el historial del paciente, incluido lo que declaró el tutor: es dato de la mascota que atiende.
+>
+> **No está atado al alta.** La capacidad existe siempre, desde el primer día de la mascota y desde el año que viene. El onboarding es una pantalla que la usa, no la condición que la habilita: modelarla como un permiso que se apaga después habría dejado sin cargar la libreta al tutor que la encuentra en un cajón dos meses más tarde.
+>
+> **El co-tutor con edición también carga antecedentes**, con el mismo criterio con el que ya sube adjuntos: alcanza los mismos datos que el dueño salvo administrar accesos, y quien cuida al animal la mitad de la semana sabe lo mismo de su historia. El de lectura no escribe nada.
 
 > El rol clínica_admin gestiona veterinarios y datos administrativos de la clínica, y **no tiene acceso al historial clínico de ningún paciente**: ni al Evento clínico, ni a la Medicación, ni a los Adjuntos, ni a la ficha de un Paciente o de un Tutor. Ese acceso es del veterinario que atiende y del tutor.
 
