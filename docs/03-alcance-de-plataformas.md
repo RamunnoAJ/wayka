@@ -205,6 +205,7 @@ Son de la aplicación y de ningún otro lado (sección 2). Están diseñadas par
 ### 5.3 Ficha de paciente
 - Historial de eventos clínicos: fecha, tipo, descripción, diagnóstico, y **quién lo escribió** — el profesional y su clínica, que con una mascota compartida ya no son siempre los mismos, o el propio tutor cuando el registro es un antecedente que él cargó.
 - **Foto y nombre de la mascota encabezan la ficha**, cuando hay foto de perfil cargada (5.6). Sin foto la ficha funciona igual; no se rellena con un ícono de especie que finja ser una.
+- **La foto se cambia tocando el avatar**, ahí mismo en la ficha: la cámara de la app o el carrete (5.6). Es donde el tutor la está mirando. No se elige de entre los adjuntos ya cargados — eso obligaba a saber que la foto de perfil es un adjunto marcado, que es cómo se guarda y no cómo se piensa. La foto nueva entra por el camino de adjuntos marcada como foto de perfil, así que la anterior no se borra: deja de ser la que se muestra (Reglas de Negocio, 4.14).
 - Medicación activa e histórica.
 - Qué clínicas la atienden hoy.
 - **Agregar un antecedente** (5.12), desde la ficha y en cualquier momento, no solo al dar de alta.
@@ -230,7 +231,7 @@ No es una pantalla de la barra: lo que el tutor toca de todo esto es un interrup
 
 ### 5.6 Adjuntos
 - Subida de archivos (ej. ficha histórica en papel, foto de una herida) asociados al paciente. Es también por donde entran las **fotos de la libreta sanitaria** en la carga de antecedentes (5.12): quedan colgadas de la mascota, sin obligar a asociar cada una a un antecedente puntual.
-- **Marcar una foto como foto de perfil de la mascota**, desde la tarjeta del adjunto. Marcar una desmarca la anterior sin preguntar, porque hay una sola (Reglas de Negocio, 4.14): la anterior no se borra, deja de ser la que se muestra. Solo se ofrece sobre adjuntos que son imagen.
+- **La foto de perfil de la mascota es un adjunto marcado, pero acá no se marca**: se cambia desde el avatar de la ficha (5.3). La tarjeta del adjunto no ofrece "usar como foto" — una foto de perfil que se elige en la lista de archivos hace que el tutor tenga que entender el modelo de datos para cambiarla. La tarjeta sí distingue cuál es la vigente.
 - **Sacar la foto en el momento** con la cámara de la app, con guía de encuadre y revisión antes de subir, además de elegir un archivo que ya esté en el teléfono.
 - **Mirar el adjunto sin salir de la ficha**, tocando la tarjeta (o el chip, en el historial). Un listado que solo muestra nombre y peso obliga a retirar y volver a subir para saber si la foto que se cargó era la correcta.
   - La tarjeta de un adjunto que es imagen **muestra la imagen**, no un icono genérico: reconocer cuál es cuál sin abrir ninguno es la mitad del problema.
