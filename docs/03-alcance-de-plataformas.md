@@ -9,13 +9,13 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 
 | Plataforma | Quién accede | Propósito |
 |---|---|---|
-| Web | Veterinario, Clínica_admin, Tutor | Gestión completa del día a día clínico y administrativo. Para el tutor: la misma consulta que hace desde el teléfono, cuando no lo tiene a mano. |
-| Móvil | Veterinario (paridad con web), Tutor (paridad con web) | Para el veterinario: misma herramienta que la web, disponible fuera de la clínica. Para el tutor: el punto de entrada habitual, y el único donde recibe avisos y puede sacar una foto. |
+| Web | Veterinario, Clínica_admin | Gestión completa del día a día clínico y administrativo. |
+| Móvil | Veterinario (paridad con web), Tutor (acceso exclusivo) | Para el veterinario: misma herramienta que la web, disponible fuera de la clínica. Para el tutor: su único acceso al producto, y el lugar donde recibe avisos, saca fotos y lee sin conexión. |
 | Línea de comandos | Administrador de la plataforma | Alta de una Clínica junto con su cuenta clínica_admin, y emisión del token de activación con el que esa cuenta define su contraseña (Reglas de Negocio, 4.10). No es una interfaz de usuario del producto: es una herramienta de operación, fuera de la API HTTP. |
 
 > **El clínica_admin no tiene acceso a la aplicación móvil**, y esa restricción se valida en el backend, no solo ocultando la opción en la interfaz — mismo criterio aplicado al motor de permisos en Reglas de Negocio.
 >
-> El tutor **sí** entra por web. La primera versión de este documento decía que no accedía bajo ninguna circunstancia; se cambió porque dejaba afuera al tutor sin el teléfono a mano, y porque ningún dato ni ninguna acción del tutor dependen del canal. Lo que la app le da y la web no son las **dos funciones que dependen del aparato**: las notificaciones push (5.5) y sacar una foto con la cámara (5.6). Las dos degradan solas — sin push no hay recordatorio, y sin cámara se adjunta un archivo que ya esté en la computadora.
+> **El tutor tampoco entra por la web**, y la restricción se valida en el mismo lugar y con el mismo criterio. Estuvo habilitado un tiempo para el que no tiene el teléfono a mano; se volvió atrás porque su producto **es** la aplicación: los avisos (5.5), la cámara (5.6) y la copia local que le da acceso sin conexión (Sincronización sin Conexión) dependen del aparato, y una web que se los da a medias no es un canal alternativo sino una versión peor de lo mismo.
 
 ## 2. Matriz de plataforma por rol
 
@@ -23,11 +23,9 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 |---|---|---|
 | Clínica_admin | Acceso completo | Sin acceso |
 | Veterinario | Acceso completo | Acceso completo (paridad total con la web) |
-| Tutor | Acceso completo, menos push y cámara | Acceso completo |
+| Tutor | Sin acceso | Acceso completo |
 
 > La paridad entre web y móvil implica que ambas plataformas comparten el mismo conjunto de funcionalidades para ese rol — la diferencia entre plataformas es de dispositivo/contexto de uso, no de permisos ni de features disponibles.
->
-> Las dos excepciones del tutor no son de permisos: **push** (5.5) necesita un dispositivo registrado, que solo existe entrando desde la app, y **la cámara** (5.6) necesita una. En web, la subida de adjuntos sigue funcionando con un archivo del disco.
 
 ## 3. Pantallas mínimas — Web
 
@@ -42,7 +40,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Al canjear **no se entra**: el canje no emite sesión, igual que la activación (3.1.1). La pantalla lleva al ingreso.
 - Un token inexistente, vencido o ya usado se rechaza con un mismo mensaje genérico.
 - **Si quien llegó es tutor o veterinario, la pantalla ofrece abrir la app** con una tira arriba, y sigue funcionando entera para quien no la tenga o esté en la computadora (Arquitectura, 3.8). Al clínica_admin no se la muestra: no puede entrar desde móvil.
-- Es, junto con el ingreso, el registro de tutor (5.1) y la activación (3.1.1), una de las pantallas alcanzables sin sesión.
+- Es, junto con el ingreso y la activación (3.1.1), una de las pantallas de la web alcanzables sin sesión. El registro de tutor (5.1) no está en esa lista: es de la app.
 
 ### 3.1.1 Activación de la cuenta (sin sesión)
 - Se abre con el token de activación: al clínica_admin se lo entrega el administrador de la plataforma en mano, al veterinario le llega por correo cuando su clínica lo da de alta (procesos 4.12 y 4.16 de Reglas de Negocio). La pantalla es la misma para los dos y no distingue de dónde vino el token.
@@ -50,7 +48,7 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - Un token inexistente, vencido o ya usado se rechaza con un mismo mensaje genérico: la pantalla no ayuda a distinguir cuál de los tres fue.
 - Al activar **no se entra**: el canje no emite sesión. La pantalla lleva al login, donde se estrena la contraseña recién definida.
 - Al veterinario, que llega desde el correo, la pantalla le **ofrece abrir la app**; al clínica_admin, que pega el token a mano en la web, no (Arquitectura, 3.8).
-- Es, junto con el ingreso, la recuperación de contraseña (3.1.2) y el registro de tutor (5.1), una de las pantallas alcanzables sin sesión.
+- Es, junto con el ingreso y la recuperación de contraseña (3.1.2), una de las pantallas de la web alcanzables sin sesión.
 
 ### 3.2 Panel de clínica (rol: Clínica_admin)
 
@@ -177,7 +175,7 @@ Mismo conjunto funcional que las secciones 3.3 a 3.6 —incluido el asiento de l
 
 ## 5. Pantallas mínimas — Tutor
 
-Son las mismas en las dos plataformas. Están diseñadas para teléfono —una columna, barra inferior de pestañas— y en el navegador se muestran en esa misma composición, centradas: es una decisión de alcance, no un pendiente olvidado. Un kit propio de tutor-web se puede pedir más adelante sin rehacer nada de esto.
+Son de la aplicación y de ningún otro lado (sección 2). Están diseñadas para teléfono: una columna y barra inferior de pestañas.
 
 **La barra tiene tres pestañas: Mascotas, Citas y Ajustes.** Es la lista entera de lo que el tutor abre por sí mismo; todo lo demás es una pantalla de detalle a la que se llega desde una de las tres.
 
@@ -188,6 +186,7 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 ### 5.1 Login / Registro
 - Autenticación por email + contraseña, o con Google.
 - **Registro abierto**: el tutor crea su cuenta desde la app sin intervención de una clínica, indicando nombre, email, contraseña y el consentimiento de uso de datos (proceso 4.9 de Reglas de Negocio). El registro crea su ficha de Tutor junto con la cuenta.
+- **La web no ofrece el registro.** El alta es pública y no declara canal —la barrera está en el login que viene inmediatamente después (Arquitectura, 4.5)—, así que un formulario en el navegador terminaría en una cuenta creada y un ingreso rechazado. Quien llegue al ingreso web con una cuenta de tutor, o a la ruta del registro a mano, encuentra en su lugar que Wayka para tutores está en la aplicación.
 - Queda operativo de inmediato: entra y ve sus secciones vacías hasta que una clínica le vincule Pacientes.
 - **Al registrarse con contraseña le sale un correo con un enlace de confirmación** (proceso 4.9.1). La pantalla lo avisa y sigue de largo: confirmar **no es un paso del registro** y no bloquea nada — ni entrar, ni dar de alta la primera mascota (5.2). Registrarse con Google no manda nada, porque el correo ya viene verificado por el proveedor.
 - La pantalla de confirmación se abre desde el enlace del correo, **con o sin sesión**, y lo único que hace es avisar que quedó confirmado. Ofrece abrir la app, sin obligar: el correo llega tanto al teléfono como a la computadora. Un enlace ya usado dice lo mismo: quien vuelve a hacer clic hizo bien las cosas dos veces, no algo mal una.
@@ -215,12 +214,12 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 - Vista de citas pendientes con su fecha **y hora**, y con quién la va a atender si ya está asignada.
 - Confirmar o solicitar reagenda de una cita (sin poder cambiar el estado directamente, según proceso 4.4 de Reglas de Negocio). Al reagendar, el tutor elige entre las horas válidas de la clínica que atiende a su mascota, igual que el veterinario.
 
-### 5.5 Notificaciones — solo móvil
+### 5.5 Notificaciones
 
 No es una pantalla de la barra: lo que el tutor toca de todo esto es un interruptor, y vive en Ajustes (5.8). La sección define qué se envía y bajo qué reglas.
 
 - Recordatorio push el día anterior a una cita —a una hora fija— y otro un par de horas antes del turno, sobre las citas con `notificar_tutor` habilitado (Reglas de Negocio, 4.15).
-- La app registra el dispositivo al iniciar sesión y lo da de baja al cerrarla: una cuenta sin dispositivo registrado no recibe avisos. **El tutor que solo entra por web no recibe ninguno**, y la pantalla se lo dice ahí mismo en vez de dejarlo esperando un aviso que no va a llegar.
+- La app registra el dispositivo al iniciar sesión y lo da de baja al cerrarla: una cuenta sin dispositivo registrado no recibe avisos. **El tutor que se registró y todavía no abrió la app en su teléfono no recibe ninguno**, y la pantalla se lo dice ahí mismo en vez de dejarlo esperando un aviso que no va a llegar.
 - **El tutor prende y apaga los avisos desde la app**, en Ajustes (5.8). Apagarlos da de baja este dispositivo; prenderlos lo da de alta de nuevo.
   - Es **por teléfono, no por cuenta**: el modelo registra Dispositivos y no una preferencia del Usuario (Modelo de Datos, sección 5). Apagarlos en un aparato no los apaga en el otro del mismo tutor — el que molesta es el que se tiene en la mano.
   - La decisión **sobrevive al cierre de sesión**. El registro automático del login la respeta; si no, el próximo ingreso volvería a prenderlos y el control no serviría de nada. Cerrar sesión sigue dando de baja el aparato por seguridad, pero eso no es apagarlos: al volver a entrar quedan como el tutor los dejó.
@@ -230,7 +229,7 @@ No es una pantalla de la barra: lo que el tutor toca de todo esto es un interrup
 ### 5.6 Adjuntos
 - Subida de archivos (ej. ficha histórica en papel, foto de una herida) asociados al paciente. Es también por donde entran las **fotos de la libreta sanitaria** en la carga de antecedentes (5.12): quedan colgadas de la mascota, sin obligar a asociar cada una a un antecedente puntual.
 - **Marcar una foto como foto de perfil de la mascota**, desde la tarjeta del adjunto. Marcar una desmarca la anterior sin preguntar, porque hay una sola (Reglas de Negocio, 4.14): la anterior no se borra, deja de ser la que se muestra. Solo se ofrece sobre adjuntos que son imagen.
-- En móvil, además, **sacar la foto en el momento** con la cámara de la app, con guía de encuadre y revisión antes de subir. En web solo se adjunta un archivo que ya exista.
+- **Sacar la foto en el momento** con la cámara de la app, con guía de encuadre y revisión antes de subir, además de elegir un archivo que ya esté en el teléfono.
 - **Mirar el adjunto sin salir de la ficha**, tocando la tarjeta (o el chip, en el historial). Un listado que solo muestra nombre y peso obliga a retirar y volver a subir para saber si la foto que se cargó era la correcta.
   - La tarjeta de un adjunto que es imagen **muestra la imagen**, no un icono genérico: reconocer cuál es cuál sin abrir ninguno es la mitad del problema.
   - Las **imágenes se ven dentro de la aplicación**, con acercamiento por pinch y doble toque, y arrastre para recorrerlas cuando están acercadas — una herida o el renglón de una ficha en papel se miran de cerca. El resto (un PDF, un formato que el aparato no dibuja) se abre con el visor del sistema: la aplicación no incorpora un motor de renderizado propio, y la URL prefirmada ya es lo que ese visor necesita.
@@ -256,9 +255,8 @@ Una sola pestaña para todo lo que es del tutor y no de una mascota: su ficha, s
 - **Si el correo está sin confirmar, se ve acá y desde acá se reenvía el enlace.** Es el único lugar donde el tutor puede arreglar un correo mal tipeado antes de necesitarlo, que es siempre el peor momento: el día que olvide la contraseña, la recuperación va a mandar el enlace a esa dirección (3.1.2). El aviso no bloquea nada y no vuelve a aparecer una vez confirmado.
 - Cerrar sesión, que además da de baja este dispositivo (5.5).
 
-**Avisos — solo móvil**
+**Avisos**
 - El interruptor de recordatorios push, con las reglas de 5.5: es por teléfono y no por cuenta, sobrevive al cierre de sesión, y no aparece mientras el permiso del sistema operativo no esté concedido.
-- En web el bloque no se muestra como un control apagado sino como la explicación de que los avisos llegan al teléfono: un interruptor que la plataforma no puede honrar es peor que su ausencia.
 
 ### 5.9 Compartir una mascota
 Solo el dueño. Dos caminos en la misma pantalla:

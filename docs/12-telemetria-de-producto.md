@@ -73,7 +73,7 @@ Cada fila es un evento del enum, con quién lo emite y la métrica que sostiene.
 | `pantalla_vista` | Cliente | `pantalla` (enum del Alcance de Plataformas) | Qué partes del producto se usan y cuáles no llegó a abrir nadie. |
 | `paciente_creado` | Backend | `origen` (clínica / tutor) | Crecimiento de la cartera y por qué vía entra. |
 
-El corte `plataforma` de todos estos eventos es lo que valida la **paridad web/móvil** que exige el Alcance de Plataformas, sección 2: si el veterinario nunca carga desde el teléfono, la paridad se está pagando sin que nadie la use.
+El corte `plataforma` de todos estos eventos es lo que valida la **paridad web/móvil del veterinario**, que es el único rol que tiene los dos canales (Alcance de Plataformas, sección 2): si nunca carga desde el teléfono, la paridad se está pagando sin que nadie la use. En los otros dos roles el corte no mide paridad sino consistencia — un evento de tutor en `web`, o uno de clínica_admin en `movil`, sería una sesión que la regla 2.3 no debería haber emitido.
 
 ### 5.3 Tutor y efecto red
 
