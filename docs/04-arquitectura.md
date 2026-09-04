@@ -90,6 +90,8 @@ Quedan fuera del prefijo, en la raíz, las rutas que no son recursos de negocio:
 | Ruta | Por qué en la raíz |
 |---|---|
 | `/health` | Lo consulta el balanceador o el orquestador, no un cliente. Su ruta es parte del despliegue, y no tiene por qué mudarse cuando cambie la versión de la API. También responde dentro del prefijo, porque está declarado en el contrato. |
+| `/health/ready` | Contesta una pregunta distinta de `/health`: no si el proceso vive, sino si esta instancia puede atender —verifica sus dependencias—. Sin él, un despliegue con la base caída responde 200 y se lleva tráfico que solo puede fallar. **No está en el contrato**: es del despliegue, y quien decide con su respuesta es el balanceador. |
+| `/metrics` | Latencias y tasas de error del backend. Tampoco está en el contrato, y no se publica al mundo: la cierra la red del despliegue o un token. Es observabilidad y no telemetría de producto — esa entra por `/api/v1/telemetria` y se guarda con el usuario adentro. |
 | `/openapi.yaml`, `/docs` | Son el contrato y su visor, no algo que el contrato describa. |
 
 ### 3.5 CORS

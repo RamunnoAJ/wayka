@@ -35,6 +35,7 @@ La entidad está definida en Modelo de Datos, 4.17. Lo que importa acá es por q
 - **`propiedades` es un JSON con claves permitidas por evento**, declaradas en el catálogo. El backend descarta las que no están en la lista en vez de guardarlas. Un JSON abierto es por dónde termina entrando el nombre de la mascota.
 - **Dos relojes: `ocurrido_at` y `registrado_at`.** El primero es cuándo pasó según el cliente; el segundo, cuándo lo recibió el servidor. Se separan porque el tutor genera eventos sin conexión y los sube horas después (sección 7), y porque el reloj de un teléfono se puede correr. Toda métrica se calcula sobre `ocurrido_at`, con `registrado_at` como control: un `ocurrido_at` posterior al `registrado_at`, o más de 7 días anterior, se guarda igual pero queda marcado como sospechoso y se excluye de las series.
 - **`plataforma`, `usuario_id`, `rol` y `clínica_id` son columnas del evento, no propiedades.** Las tres últimas salen del token. La plataforma viaja una vez por lote cuando la emite el cliente —un cliente es una sola plataforma—, y cuando la emite el servidor sale del **canal** con el que esa sesión se autenticó (`web` o `movil`, regla 2.3): el backend sabe desde qué canal le hablan, no qué sistema operativo tiene el aparato. Por eso la columna admite `web`, `ios`, `android` y `movil`, y la lectura de paridad suma los tres últimos del mismo lado. Queda en NULL en los eventos que emite un job, donde no hubo ningún cliente.
+- **`app_version` sola no identifica el código que corrió, y por eso va acompañada de `update_id`.** La versión declarada en la app no cambia cuando se publica una actualización por aire: dos clientes con la misma `app_version` pueden estar corriendo dos paquetes distintos. Sin el identificador de la actualización, "este salto en el abandono empezó con tal entrega" no se puede leer, que es la única razón por la que se guarda la versión. Queda en NULL en los eventos que emite el servidor y en los clientes que corren sin actualizaciones por aire —el navegador, el entorno de desarrollo—, y no es dato personal: lo genera el sistema de compilación, no el aparato.
 - **`sesión_id` es un identificador efímero que genera el cliente** al abrir la app y descarta al cerrarla. No es el token, no es el refresh, no sobrevive al reinicio: sirve para agrupar los eventos de un mismo uso y para contar sesiones, y para nada más.
 - **`usuario_id` se guarda, y eso es dato personal.** Con una única clínica piloto, seudonimizarlo sería teatro: el plantel son unas pocas personas y cualquier corte por rol y fecha las identifica igual. Se asume que es dato personal, se lo trata como tal —queda alcanzado por el aviso de privacidad y por el plazo de retención de la sección 8— y se lo conserva porque sin él no hay retención por usuario ni cohortes, que es la mitad de lo que este documento existe para medir.
 - **No tiene `deleted_at` ni auditoría.** Es un registro operativo, como Notificación (Modelo de Datos, 4.12): no es una entidad del dominio clínico que alguien dé de baja. Nadie lo edita nunca; la única baja es la del plazo de retención.
@@ -57,13 +58,16 @@ Cada fila es un evento del enum, con quién lo emite y la métrica que sostiene.
 | Evento | Emisor | Propiedades | Para qué |
 |---|---|---|---|
 | `evento_clinico_creado` | Backend | `tipo`, `con_cita` | **Eventos clínicos por veterinario por semana.** Es la métrica norte: si el veterinario no carga, no hay historial, y sin historial el tutor no tiene nada que ver. Todo lo demás de este documento es secundario. |
-| `carga_evento_abierta` | Cliente | `plataforma` | Denominador del abandono y arranque del cronómetro. |
-| `carga_evento_abandonada` | Cliente | `plataforma`, `duración_ms` | **Tasa de abandono del formulario clínico.** Un abandono alto con duración alta es un formulario largo; con duración baja, es un formulario que no se entiende. |
+| `carga_evento_abierta` | Cliente | — | Denominador del abandono y arranque del cronómetro. |
+| `carga_evento_abandonada` | Cliente | `duración_ms` | **Tasa de abandono del formulario clínico.** Un abandono alto con duración alta es un formulario largo; con duración baja, es un formulario que no se entiende. |
+| `carga_evento_guardada` | Cliente | `duración_ms` | **Tiempo de carga** (sección 9). Es el numerador que le falta al cronómetro: sin él, la única duración registrada es la de los que se fueron, y la mediana mide el abandono en vez de la carga. Lo emite el cliente, y no el backend junto a `evento_clinico_creado`, porque el cronómetro solo existe en el cliente — meterlo en el cuerpo de la escritura clínica sería colar telemetría en el contrato del historial (mismo criterio que 5.3). |
 | `consulta_atendida_asentada` | Backend | `origen` (agendada / espontánea / urgencia), `automatica` (bool) | **El denominador de la cobertura.** Es el hecho asistencial (Modelo de Datos, 4.16), asentado al atender e independiente de que se cargue el historial. `automática` separa las que asentó una persona de las que dedujo el sistema de un evento con cita: solo las primeras informan algo. |
 | `cita_creada` | Backend | `tipo`, `con_profesional` | Cuánto del calendario se agenda en Wayka, y cuánto se reparte al agendar. |
 | `medicacion_creada`, `medicacion_finalizada` | Backend | — | Si la medicación se usa como registro vivo o se carga una vez y se abandona. |
 
-`duración_ms` del abandono y del guardado se mide entre `carga_evento_abierta` y el cierre, en el cliente. Es el único cronómetro del catálogo y existe porque el tiempo de carga es lo que decide si el veterinario vuelve al papel.
+`duración_ms` se mide en el cliente entre `carga_evento_abierta` y el cierre del formulario, y viaja en el evento que corresponda según cómo haya cerrado: `carga_evento_guardada` o `carga_evento_abandonada`. Es el único cronómetro del catálogo y existe porque el tiempo de carga es lo que decide si el veterinario vuelve al papel. Los tres se emiten solo al **crear**: una edición no es una carga, y contarla infla el denominador y ensucia la tasa de abandono con correcciones que nadie abandona igual que un formulario en blanco.
+
+`plataforma` no es propiedad de ninguno de estos eventos: es columna del evento y viaja una vez por lote (sección 3).
 
 ### 5.2 Adopción de la clínica
 
@@ -134,6 +138,8 @@ Los eventos que emite el backend no participan de esto: se escriben en el mismo 
 
 Definidas con numerador y denominador, porque una métrica sin denominador es una anécdota.
 
+**El SQL de cada fila de esta tabla vive en `backend/analitica/`**, un archivo por métrica, y se corre con `backend/scripts/analitica.sh`. Está escrito y versionado y no se improvisa en cada consulta: dos personas que escriben "cobertura" a mano escriben dos cobertura distintas, y la que se discute después es cuál de las dos valía. No es una API ni un panel —nadie lee telemetría por la API (sección 6) y eso no cambia—: es el SQL que esta tabla define, guardado donde se pueda revisar.
+
 | Métrica | Cálculo | Salud esperada en el piloto |
 |---|---|---|
 | **Eventos clínicos por veterinario por semana** | `evento_clinico_creado` agrupado por `usuario_id` y semana | Serie estable o creciente, mirada por persona |
@@ -159,7 +165,7 @@ Queda una limitación honesta y hay que leerla junto con la métrica: **el denom
 
 ## 10. Fuera de alcance de este documento
 
-- **Cómo se consultan y se grafican las métricas** — herramienta de análisis, panel, alertas.
+- **Con qué se grafican las métricas** — herramienta de análisis, panel, alertas. El SQL de cada métrica sí entra, y vive en `backend/analitica/` (sección 9); lo que queda afuera es todo lo que lo consuma.
 - **Sala de espera y estado de la atención** — el asiento registra que se atendió, no un ciclo de admisión, en curso y alta. Modelar el flujo de la recepción es otro producto.
 - **Métricas de negocio que no son de uso** — facturación, costo por clínica, conversión comercial.
 - **Observabilidad técnica** — latencias, errores y trazas del backend (`backend/docs/07`).
