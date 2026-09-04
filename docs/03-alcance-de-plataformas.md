@@ -60,6 +60,8 @@ El corte es por **frecuencia de uso** y no por afinidad temática. El panel y la
 
 > **Cerrar sesión no está en ninguna de las cinco.** Vive en la barra de navegación, al lado del nombre de quien está adentro: es donde se lo busca, y donde ya estaba para los otros roles.
 
+> **La barra lateral no se cambia por la inferior, por angosta que quede la ventana.** El resto de la web corta por ancho —el veterinario tiene paridad con el móvil y una ventana chica es un teléfono—, pero este rol no tiene canal móvil (sección 2) y su salida de sesión vive solo en esa barra: cambiarla por la inferior lo dejaba adentro sin forma de salir, y no hace falta un teléfono para llegar ahí —un zoom al 150 % en un portátil de 1366 px ya da 911—. Por debajo del corte la página **se desplaza en horizontal** en vez de recomponerse: para el rol que no tiene una versión angosta, desplazar deja los datos alcanzables y recortarlos no.
+
 #### 3.2.1 Panel — el tablero
 
 Cuatro bloques de **conteos**. Ninguno lista registros ni nombra una mascota: el rol no alcanza el historial clínico y un listado de atenciones con hora y profesional lo reconstruye por el costado (Modelo de Datos, 5).
