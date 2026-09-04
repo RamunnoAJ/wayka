@@ -17,15 +17,16 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 
 | Regla | Aplica a | Validación |
 |---|---|---|
-| Documento único | Tutor, Veterinario | número_documento no puede repetirse entre personas del mismo tipo_documento. En Tutor la validación aplica solo a las fichas que ya tienen documento cargado: el auto-registro (4.9) no lo exige. Se valida tanto en el alta como en la edición de la ficha, y el tipo y el número se cargan o se limpian juntos: una ficha nunca tiene uno sin el otro. |
+| Documento único | Tutor, Veterinario | número_documento no puede repetirse entre fichas vigentes **de la misma entidad** con el mismo tipo_documento. **La unicidad no cruza Tutor y Veterinario**: el mismo documento puede estar en una ficha de cada una, porque es la misma persona en dos papeles y no una ficha duplicada (Modelo de Datos, 4.1 y 4.4). En Tutor la validación aplica solo a las fichas que ya tienen documento cargado: el auto-registro (4.9) no lo exige. Se valida tanto en el alta como en la edición de la ficha, y el tipo y el número se cargan o se limpian juntos: una ficha nunca tiene uno sin el otro. |
 | Email único | Usuario | email no puede repetirse en todo el sistema, independientemente del tipo_usuario. |
 | Un solo rol activo por cuenta | Usuario | Exactamente una de tutor_id / veterinario_id / clínica_id debe estar completa, según tipo_usuario. Las otras dos deben ser NULL. |
-| Al menos un método de autenticación | Usuario | password_hash y google_id no pueden ser ambos NULL — un Usuario necesita al menos una forma de autenticarse. **Única excepción**: la cuenta de clínica_admin con `activación_pendiente = true`, entre que la crea la línea de comandos y que se activa (proceso 4.16). Mientras tanto no puede autenticarse por ninguna vía, que es exactamente lo que se busca: la cuenta existe pero todavía no la estrenó nadie. El canje escribe la contraseña y baja la bandera en la misma transacción, y la regla vuelve a regir sin matices. |
+| Al menos un método de autenticación | Usuario | password_hash y google_id no pueden ser ambos NULL — un Usuario necesita al menos una forma de autenticarse. **Única excepción**: la cuenta con `activación_pendiente = true`, entre que la crean —la línea de comandos si es clínica_admin (4.10), el clínica_admin si es veterinario (4.12)— y que alguien la estrena (proceso 4.16). Un tutor nunca está en ese estado: se registra él mismo, y elige su credencial en el mismo acto. Mientras tanto no puede autenticarse por ninguna vía, que es exactamente lo que se busca: la cuenta existe pero todavía no la estrenó nadie. El canje escribe la contraseña y baja la bandera en la misma transacción, y la regla vuelve a regir sin matices. |
 | Google ID único | Usuario | google_id no puede repetirse — una cuenta de Google solo puede estar vinculada a un Usuario de Wayka. |
 | Política de contraseña | Usuario | Mínimo 8 caracteres, con al menos una letra minúscula, una mayúscula y un dígito. Rige tanto el alta como el cambio de contraseña. |
 | Clínica de pertenencia según rol | Usuario | clínica_de_pertenencia_id debe ser NULL en las cuentas de tutor, estar completa en las de veterinario, y coincidir con clínica_id en las de clínica_admin. |
 | Rol y referencias inmutables | Usuario | tipo_usuario y las tres FK de rol no son editables después del alta: permitir cambiarlas habilitaría una escalada de privilegios sobre una cuenta ya creada. |
 | Email reutilizable tras la baja | Usuario | La unicidad de email rige entre cuentas vigentes. El email de una cuenta dada de baja lógicamente puede reutilizarse en un alta posterior. |
+| Matrícula única | Veterinario | La matrícula no se repite entre fichas vigentes que la tengan cargada, **en todo el sistema y no por clínica**: la emite un colegio profesional, no la clínica (Modelo de Datos, 4.4). Se valida en el alta y en la edición, y se compara normalizada —sin espacios al borde y sin distinguir mayúsculas—, porque `mp-4821` y `MP-4821` son la misma habilitación. Dos fichas sin matrícula no colisionan. Limpiarla libera el número para otra ficha, con el mismo criterio que el email tras la baja. |
 | Matrícula obligatoria para escribir | Veterinario | Un veterinario sin matrícula cargada no puede crear ni editar Eventos clínicos ni Medicación (puede existir de alta, pero queda en modo restringido). |
 
 ### 2.2 Datos clínicos
@@ -99,6 +100,7 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 |---|---|---|
 | Nunca borrado físico | Todas las entidades clínicas | Ninguna operación de la aplicación ejecuta DELETE físico sobre Evento clínico, Medicación, Cita, Adjuntos o Paciente. Toda baja es lógica (deleted_at). |
 | Quién puede borrar (lógicamente) | Evento clínico, Medicación | **Depende del `cargado_por` del registro.** Los de origen `veterinario`: cualquier veterinario de una clínica con vínculo vigente sobre ese paciente, no solo el autor. Los de origen `tutor`: el dueño de la mascota y el co-tutor con edición, y también el veterinario. Lo que ningún tutor puede es dar de baja un registro de origen `veterinario`, sea dueño o co-tutor. |
+| Quién puede renombrar | Adjuntos | Solo quien lo subió, mismo criterio que la baja. Cambia `nombre_archivo` y nada más: el archivo no se edita (Modelo de Datos, 4.8 y proceso 4.14). |
 | Quién puede borrar (lógicamente) | Adjuntos | Cada rol retira los adjuntos que subió: el veterinario los suyos, el tutor los suyos. Un tutor no borra el estudio que cargó la clínica, ni la clínica la ficha histórica que subió el tutor. La baja es lógica y **no borra el objeto del bucket**: "nunca borrado físico" alcanza también al archivo. |
 | Quién puede borrar (lógicamente) | Cita | Un veterinario de la clínica de la cita, el dueño de la mascota o un co-tutor con nivel de edición. Es la excepción a "el tutor solo da de baja lo que él declaró": la Cita es agenda, no historial — el tutor que sabe que no va a llevar a su mascota es quien mejor puede retirarla del calendario, y la baja no destruye nada que se haya registrado sobre la atención. |
 | Quién puede borrar (lógicamente) | Tutor | Solo un veterinario de una clínica vinculada a esa ficha. La baja marca deleted_at y no cascadea sobre la cuenta de Usuario del tutor. **Se rechaza mientras la ficha tenga Pacientes vigentes**: dar de baja al tutor dejaría mascotas activas sin nadie a quien contactar. La clínica tiene que resolver primero qué pasa con ellas. |
@@ -122,6 +124,8 @@ Reglas que la aplicación debe hacer cumplir antes de persistir un cambio, indep
 | Tutor | El propio tutor, por auto-registro público (proceso 4.9) | Es el único punto de entrada abierto del sistema: el tutor debe poder registrarse y empezar a usar la aplicación sin intervención de una clínica. |
 | Veterinario | El clínica_admin de la clínica a la que pertenece | Es la gestión del plantel de la clínica (Alcance de Plataformas, 3.2). La cuenta queda con clínica_de_pertenencia_id = la clínica del administrador que la da de alta; no es un dato que el cliente pueda elegir. |
 | Clínica_admin | El administrador de la plataforma, fuera de la API (proceso 4.10) | No existe ningún rol dentro del sistema con permiso para crearla: exponerla por HTTP convertiría a cualquier clínica_admin en una vía de escalada de privilegios. |
+
+> **El clínica_admin crea la cuenta, pero no la estrena**: la deja con activación pendiente y el veterinario define su propia contraseña con el token que le llega por correo (4.12). Quien administra el plantel decide quién entra, no con qué credencial.
 
 > En consecuencia, el endpoint de alta de usuarios de la API solo acepta cuentas de tipo veterinario. Las de tutor entran por el registro público y las administrativas por fuera de la API. Esta misma restricción aplica al alta vía Google (4.7): solo el flujo de tutor puede originar una cuenta nueva.
 
@@ -192,6 +196,10 @@ Sobre la ficha de Tutor (distinta de la cuenta de Usuario del tutor), el alcance
 | Clínica_admin | **Busca en el padrón en proyección reducida** —nombre, contacto y si ya tiene documento cargado— y **da de alta una ficha** con nombre, contacto y consentimiento. No abre la ficha completa, no ve documento ni dirección, no edita lo ya cargado y no da de baja. |
 
 > **La búsqueda del padrón no se acota por clínica, y con el clínica_admin pasa lo mismo que con el veterinario**: antes del alta no hay ningún vínculo contra el cual acotarla. Lo que cambia es la proyección — el admin ve lo justo para reconocer a la persona que llama y decidir si ya está: nombre, cómo contactarla, y si la ficha está completa o le falta el documento.
+>
+> **El documento entra en la búsqueda sin entrar en la respuesta.** El mostrador que tiene el DNI delante lo tipea y encuentra la ficha; lo que vuelve sigue siendo nombre, contacto y si tiene documento cargado, nunca el número. Buscar por un dato y leerlo son dos permisos distintos, y acá se da el primero: sin él, el rol que más veces tiene el documento a mano es el único que no puede usarlo para no crear una ficha repetida.
+>
+> El costo asumido es que quien tiene este buscador puede **confirmar si un documento está en el padrón**, aunque no pueda leer el de nadie. Es el mismo tipo de filtración que ya tiene la búsqueda por contacto, y se acepta por el mismo motivo: es un rol de la clínica, autenticado y auditado, no una pantalla pública.
 >
 > Es la proyección reducida que esta misma sección tiene anotada como **pendiente** para la búsqueda del veterinario. Se implementa primero para el rol que se está abriendo ahora; la del veterinario sigue devolviendo la ficha completa y la deuda sigue abierta.
 >
@@ -356,7 +364,8 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 ### 4.1 Alta de paciente
 
 1. El Veterinario **o el clínica_admin** inicia el alta. Los dos pueden: el mostrador toma al cliente nuevo que llama, y esperar al veterinario para poder darle un turno no es una división que se pueda explicar en la recepción.
-2. Se busca la ficha del Tutor antes de crearla: por el par (tipo_documento, número_documento) si lo conoce, o por coincidencia parcial de nombre o contacto. Buscar por contacto es lo que permite encontrar la ficha de un tutor que ya se auto-registró, porque esa ficha se crea sin documento (4.9) y su contacto es el email del registro.
+2. Se busca la ficha del Tutor antes de crearla, y **es una sola búsqueda**: lo que se tipea se compara contra el nombre, el contacto y el número de documento a la vez. Buscar por contacto es lo que permite encontrar la ficha de un tutor que ya se auto-registró, porque esa ficha se crea sin documento (4.9) y su contacto es el email del registro; buscar por documento es lo que resuelve el caso inverso, el de la ficha que una clínica ya completó.
+   - Que sea un campo y no tres es deliberado: quien atiende el mostrador tiene delante lo que la persona le dice —un apellido, un teléfono, un DNI— y no debería tener que declarar de antemano cuál de las tres cosas es. El documento se compara **por el comienzo del número**, no por un fragmento suelto en el medio: un documento se tipea desde el principio, y buscar `4821` adentro de cualquier número devuelve un ruido que nadie pidió.
 3. Si el Tutor no existe en el sistema, se crea primero — valida número_documento único (regla 2.1) y exige consentimiento_datos = true. La ficha queda con `clínica_de_origen_id` = la clínica de quien da el alta, que es lo que la pone a su alcance antes de que exista el Paciente.
    - El clínica_admin la crea con **nombre, contacto y consentimiento**; documento y dirección los completa el veterinario cuando atiende, que es cuando los tiene delante. Es la misma ficha incompleta con la que nace un auto-registro (4.9).
 4. Se valida consentimiento_datos = true del Tutor (regla 2.2). Si no existe, se solicita antes de continuar.
@@ -413,6 +422,8 @@ Secuencias de pasos que involucran más de una entidad o más de una validación
 2. Si la cuenta existe, está activa y ya se estrenó, se emite un token de un solo uso con vencimiento corto y se manda por correo. **Pedir uno nuevo invalida los anteriores**: un correo viejo reenviado o filtrado no puede seguir abriendo la cuenta.
 3. El canje define la contraseña nueva y **cierra todas las sesiones abiertas** de esa cuenta. No emite sesión: para entrar hay que iniciar sesión, que es donde vive el bloqueo de canal (mismo criterio que la activación, 4.16).
 4. Una cuenta que todavía no se estrenó queda fuera: ya tiene su token de activación, y recuperarla sería saltear ese proceso.
+
+> **El enlace del correo lleva a distinto lado según quién lo recibe.** A un tutor o a un veterinario les ofrece abrir la aplicación; a un clínica_admin no, porque el bloqueo de canal (2.3) le impide autenticarse desde móvil y mandarlo ahí sería mandarlo a una pantalla donde no puede entrar. Es el único de los cuatro correos del sistema que alcanza a los tres tipos de cuenta, así que es donde la distinción decide algo — el de confirmación es solo del tutor (4.9.1), el de activación por correo solo del veterinario (4.12) y el de invitación va a alguien que va a ser co-tutor (4.19). El detalle del mecanismo está en Arquitectura, 3.8.
 
 > **Cambiar la contraseña cierra las sesiones abiertas, venga de donde venga el cambio** — el propio usuario, el clínica_admin restableciendo la de su plantel, o la recuperación por correo. Recuperar o restablecer es, casi siempre, sospechar que alguien más la tiene: no cerrar lo abierto dejaría adentro justo a quien se quería echar. Alcanza a la sesión de quien la cambia, que va a tener que volver a entrar con la que acaba de elegir.
 
@@ -471,12 +482,27 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 4. Se crean la ficha de Tutor y su Usuario **en una única transacción**: una ficha sin cuenta, o una cuenta sin ficha, dejaría al tutor sin poder entrar y sin forma de recuperar el registro a medias.
 5. La ficha se crea con nombre, contacto = el email del registro y el consentimiento fechado. Los campos de documento y dirección quedan vacíos hasta que una clínica complete la ficha. Esa completitud la hace un veterinario editando la ficha (alcance en 3.2), o el propio tutor sobre la suya.
 6. La cuenta queda activa y sin clínica de pertenencia: el tutor entra de inmediato y ve su sección vacía hasta que una clínica le vincule Pacientes.
+7. Si el alta fue con contraseña, se emite un **token de confirmación del correo** y se manda a esa dirección (4.9.1). El alta con Google no lo emite: el email lo aporta el proveedor ya verificado (4.7), así que esa cuenta nace con el correo confirmado. El envío queda **fuera de la transacción del alta**: si el correo no sale, la cuenta se creó igual y el tutor puede pedir otro.
 
 > Esta regla reemplaza al criterio anterior, según el cual el tutor solo podía crear su cuenta si una clínica ya había registrado su ficha. Se priorizó que el tutor pueda empezar a usar la aplicación sin depender de una clínica. La contrapartida es la deduplicación: si una clínica carga una ficha de Tutor para alguien que ya se auto-registró (o viceversa), quedan dos fichas para la misma persona. El criterio de fusión queda pendiente de definición — ver Modelo de Datos, 4.1.
 >
-> **La cuenta queda operativa sin confirmar el correo**, y el tutor puede dar de alta su primera mascota de inmediato (4.17). Es lo que hay hoy, no una decisión cerrada: cuando exista envío de correo hay que resolver si esa confirmación pasa a ser condición de algo — ver la nota de 4.17.
+> **La cuenta queda operativa sin confirmar el correo, y ahora eso es una decisión tomada.** El envío existe (4.9.1) y la confirmación **no es condición de nada**: el tutor entra, da de alta su primera mascota (4.17) y le carga antecedentes sin esperar el correo. Exigirla cortaría en seco el único momento en que el tutor está dispuesto a cargar todo de una vez, y compraría poco: una cuenta recién registrada no alcanza ningún dato que no haya cargado ella misma, así que un correo falso no expone a nadie más que a quien lo escribió.
+>
+> Lo que la confirmación sí hace es **habilitar el canal de salida**. Es lo que distingue una dirección tipeada mal de una real, y de eso depende que la recuperación de contraseña (4.4.1) no sea un callejón sin salida: un tutor que se registró con un correo con un error de tipeo y olvidó su contraseña no tiene a nadie que se la restablezca. Por eso se manda, y por eso el estado se guarda.
 
 > Este es el único punto del sistema donde el paso 3 de 4.7 puede crear un Usuario nuevo. Para cualquier otro tipo_usuario, Google solo vincula cuentas ya existentes (2.5, 4.7).
+
+### 4.9.1 Confirmación del correo
+
+1. Al registrarse con contraseña (4.9) se emite un token de un solo uso, se guarda **hasheado** y se manda por correo dentro de un enlace. Pedir uno nuevo invalida los anteriores, mismo criterio que la recuperación (4.4.1).
+2. El canje marca la fecha de confirmación en la cuenta y consume el token. **No emite sesión, no cambia permisos y no habilita nada**: lo único que cambia es que el sistema ahora sabe que esa dirección existe y que su titular la lee.
+3. Si la cuenta ya estaba confirmada, el canje responde igual que si hubiera confirmado. El segundo clic sobre el mismo enlace es un accidente corriente —un cliente de correo que precarga el link, alguien que vuelve atrás en el navegador— y contestarle un error a quien ya hizo bien las cosas no protege de nada.
+4. El **reenvío exige sesión**: lo pide la propia cuenta desde adentro de la aplicación. No hay un endpoint público que acepte un correo cualquiera, porque sería exactamente el padrón de direcciones registradas que 4.4.1 se cuida de no revelar — y acá, a diferencia de la recuperación, quien necesita el reenvío ya está adentro.
+5. Un token vencido, inexistente o ya usado de otra cuenta se rechaza con **el mismo error genérico**, como la activación y la recuperación.
+
+> **Vive mucho más que los otros dos tokens** (48 horas por defecto, contra una hora la recuperación). La diferencia no es un descuido: la activación y la recuperación **abren una cuenta** —quien las tenga define la contraseña—, y este no abre nada. Lo peor que puede hacer quien intercepte el enlace es marcar como confirmada una dirección que ya era de otro. Estirarlo es lo que evita que un correo leído al día siguiente llegue muerto.
+>
+> **Solo alcanza a las cuentas con contraseña.** La cuenta creada con Google nace confirmada porque el proveedor ya verificó el email (4.7), y a la de veterinario o clínica_admin la confirma su propia activación: el token de activación viajó a esa dirección y alguien lo canjeó, que es la misma prueba (4.12, 4.16).
 
 ### 4.10 Alta de una clínica y de su cuenta administrativa
 
@@ -495,8 +521,12 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 
 1. El clínica_admin da de alta la ficha de Veterinario y su cuenta de acceso **en una única transacción**: una ficha sin cuenta dejaría a alguien en el plantel sin poder entrar al sistema, y una cuenta sin ficha violaría la regla de integridad 2.1.
 2. La clínica no se envía en el pedido: es siempre la del administrador que da el alta (regla 2.5). Tanto la ficha como la cuenta quedan en esa clínica.
-3. Se valida el par (tipo_documento, número_documento) único entre fichas vigentes (regla 2.1), el email libre en todo el sistema y la política de contraseña.
-4. La matrícula es opcional. Sin ella la ficha existe en modo restringido: no habilita a crear ni editar Eventos clínicos ni Medicación (regla 2.2).
+3. Se valida el par (tipo_documento, número_documento) único entre fichas vigentes **de Veterinario** (regla 2.1) —un documento que ya figure en una ficha de Tutor no obsta: son padrones distintos—, la matrícula libre si viene cargada y el email libre en todo el sistema.
+4. La matrícula es opcional. Sin ella la ficha existe en modo restringido: no habilita a crear ni editar Eventos clínicos ni Medicación (regla 2.2). Cargada, tiene que estar libre: la habilitación es de una persona y no de dos (regla 2.1).
+5. **El clínica_admin no elige la contraseña.** La cuenta nace con `activación_pendiente = true` y sin ningún método de autenticación, se emite un token de activación y se manda por correo a la dirección del veterinario. Él define su contraseña canjeándolo, con el mismo proceso con que un clínica_admin estrena la suya (4.16).
+6. El envío del correo queda **fuera de la transacción del alta**, igual que en el auto-registro: si el correo no sale, la ficha y la cuenta se crearon igual y quedan esperando una reemisión del token. Una ficha a medias sería peor que un correo que hay que volver a mandar.
+
+> **Que el administrador no elija la contraseña es el punto del cambio, no un efecto lateral.** Cuando la elegía él, la credencial de un profesional pasaba por un tercero y quedaba escrita en algún lado —un chat, un papel, la cabeza de quien la tipeó— antes de llegar a su dueño; y como el veterinario podía no cambiarla nunca, cualquier acto médico firmado con esa cuenta era, en rigor, atribuible a dos personas. Con el token, **el único que llega a saber la contraseña es su titular**. La contrapartida es que el alta ya no deja al veterinario adentro en el acto: hay un correo de por medio.
 
 ### 4.13 Baja de un veterinario
 
@@ -523,6 +553,9 @@ Que el historial siga consultable exige que **la ficha del Paciente también lo 
 5. El cliente no elige la clave del objeto ni la ve: la genera el backend. Una clave elegida por el cliente sería una vía para escribir sobre el archivo de otra mascota.
 6. **Foto de perfil.** Un adjunto se puede marcar como foto de la mascota (`es_foto_perfil`, Modelo de Datos, 4.8), al subirlo o después, y solo si es de tipo **foto**. Marcar uno **desmarca al que estuviera marcado, en la misma operación**: la mascota tiene como máximo una foto de perfil vigente. La desmarcada no se da de baja — queda como un adjunto más, que es lo que siempre fue. Dar de baja el adjunto marcado deja a la mascota sin foto de perfil: no se elige una sucesora sola.
 7. Quién puede marcarla es quien puede subir adjuntos de esa mascota (regla 2.4 y motor de permisos): no es una operación aparte con su propio alcance.
+8. **Renombrar.** `nombre_archivo` es el nombre con el que el archivo se ve y se baja, y se puede elegir **al subirlo** —junto con el archivo— o **después**, sobre uno ya cargado. Lo demás del adjunto sigue sin editarse: renombrar no toca los bytes, ni la clave, ni el tipo, ni el peso.
+9. **Renombra quien lo subió**, con el mismo criterio que retirar (regla 2.4): el archivo es de quien lo cargó, y el nombre es cómo lo van a leer todos los demás. Marcar la foto de perfil sigue siendo la excepción — ahí lo que se decide es qué muestra la ficha, no qué dice el archivo de otro.
+10. El nombre se valida: no puede quedar vacío, no lleva rutas ni saltos de línea, tiene un techo de largo, y **conserva la extensión del archivo real** — si el nombre elegido no la trae, el backend se la agrega (Modelo de Datos, 4.8). Un nombre sin extensión baja como un archivo que el sistema no sabe abrir.
 
 > **Desmarcar la anterior lo hace el backend, no el cliente.** Resolverlo en dos pedidos —desmarcar una, marcar la otra— abre la ventana en la que la mascota tiene dos fotos de perfil o ninguna, y obliga a cada cliente a recordar cuál era la vigente para poder apagarla. Es una sola operación y el estado intermedio no existe.
 
@@ -538,14 +571,16 @@ El calendario existe para que la mascota llegue a su control; el recordatorio es
 6. **Destinatario**: la cuenta del tutor de la mascota, resuelta al encolar. Una ficha de tutor sin cuenta de Usuario no recibe avisos: no hay a dónde mandarlos. Los **dispositivos** de esa cuenta, en cambio, se resuelven recién al despachar, porque entre encolar y enviar pasan horas y el tutor puede haber registrado su primer teléfono en el medio.
 7. Las notificaciones **no se auditan**: la Auditoría registra cambios sobre entidades clínicas (Modelo de Datos, 4.10), y un aviso no modifica el historial. Su rastro es la propia tabla, que guarda qué se envió, cuándo y con qué resultado.
 
-### 4.16 Activación de la cuenta de clínica_admin
+### 4.16 Activación de una cuenta
 
-1. El clínica_admin abre el enlace de activación con el token que le entregó el administrador de la plataforma.
+1. Quien la estrena abre el enlace de activación con el token que le llegó: al clínica_admin se lo entrega el administrador de la plataforma en mano (4.10), al veterinario le llega por correo cuando su clínica lo da de alta (4.12). El proceso es el mismo de los dos lados — lo único que cambia es por dónde viajó el token.
 2. El backend valida el token: que exista, que no esté usado, que no esté vencido y que su cuenta siga activa. Cualquiera de esas condiciones que falle devuelve **el mismo error genérico**: distinguir "vencido" de "inexistente" le dice a quien esté probando tokens al azar cuál acertó a medias.
 3. La persona define su contraseña, que se valida contra la política de la regla 2.1 (mínimo 8 caracteres, una minúscula, una mayúscula y un dígito).
 4. En una sola transacción se escribe el `password_hash` de la cuenta y se marca el token como usado. Es de un solo uso: presentarlo de nuevo falla, aunque quien lo presente sea la misma persona.
 5. El canje **no autentica**: devuelve el resultado de la operación, no un par de tokens. Para entrar hay que iniciar sesión con la contraseña recién definida, que pasa por el bloqueo de canal como cualquier otro login (regla 2.3).
 
+> **Es un solo proceso para dos orígenes, y eso es deliberado.** El problema es idéntico —una cuenta que existe y que nadie estrenó todavía— y duplicarlo por tipo de usuario habría dejado dos caminos hacia una contraseña, cada uno con su propia forma de equivocarse.
+>
 > Es el segundo endpoint público del sistema, junto con el auto-registro de tutor (4.9), y el único que escribe sobre una cuenta ya existente sin autenticación previa. Por eso el token es la credencial completa —no un dato que acompaña a un email o a un identificador de cuenta—: pedir además el email haría que la protección real dependa de un dato que circula en cualquier lado, y no agrega nada que el token no dé.
 >
 > El canje no emite sesión a propósito. Emitirla ahorraría un paso, pero convertiría este endpoint en una vía de autenticación paralela al login, con su propio bloqueo de canal que mantener sincronizado. Un formulario de login extra es más barato que dos caminos hacia una sesión.
@@ -568,7 +603,7 @@ El calendario existe para que la mascota llegue a su control; el recordatorio es
 >
 > Es también el motivo por el que **este camino exige conexión de punta a punta** (Sincronización sin Conexión, 5).
 >
-> **El alta no exige tener el correo confirmado.** Hoy no hay proveedor de correo configurado —no hay nada que confirmar— y la mascota se crea con la cuenta recién registrada en 4.9. **Queda pendiente de definir qué pasa cuando el envío de correo exista**: puede que ahí se exija la confirmación antes de escribir historial, o puede que se mantenga así a propósito, porque el alta de la primera mascota es el único momento en que el tutor está dispuesto a cargar todo de una vez. No se decide acá, y no se asume ninguna de las dos.
+> **El alta no exige tener el correo confirmado, y se decidió que siga así.** Ahora el envío existe (4.9.1) y la pregunta ya no está abierta: la mascota se crea con la cuenta recién registrada en 4.9, sin esperar el correo. Se eligió sostenerlo a propósito, porque el alta de la primera mascota es el único momento en que el tutor está dispuesto a cargar todo de una vez, y porque lo que escribe acá es historial **de su propia mascota**, que nadie más lee hasta que él comparta (4.18): una dirección de correo sin confirmar no pone ese dato al alcance de nadie.
 >
 > Una mascota sin clínica **no admite citas** (regla 2.2), y es lo único que le falta hasta que el tutor comparta. Todo lo demás —la ficha, el peso, los adjuntos que él suba— funciona desde el primer minuto. Es deliberado que la aplicación sirva para algo antes de que exista una veterinaria de por medio: esa era exactamente la fricción que el modelo anterior imponía.
 

@@ -115,6 +115,8 @@ Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No e
 
 > El par `(tipo_documento, número_documento)` es único entre fichas vigentes: evita duplicar tutores y sirve como criterio de búsqueda/verificación en Fase 2 (matching geolocalizado). La unicidad es por par y no sobre el número solo, porque un DNI y un pasaporte pueden compartir numeración sin ser la misma persona.
 >
+> **Es única entre tutores, no contra el resto del sistema.** Un documento cargado acá puede estar también en una ficha de Veterinario (4.4), y eso no es una colisión sino la misma persona en sus dos papeles. Las dos entidades tienen su propio índice y no se consultan entre sí.
+>
 > Los campos de documento y dirección son nullables porque el auto-registro de tutor (Reglas de Negocio, 4.9) solo pide nombre, contacto y consentimiento: exigir el documento en ese punto agregaría fricción a un alta que debe ser inmediata. Se completan cuando una clínica atiende al tutor por primera vez. La consecuencia es que dos fichas sin documento cargado no colisionan entre sí — la deduplicación al vincular un tutor auto-registrado con la ficha que una clínica podría haber creado en paralelo queda pendiente de definición.
 
 ### 4.2 Paciente (mascota)
@@ -178,12 +180,18 @@ Tutor y Clínica guardan la dirección con el mismo grupo de cuatro campos. No e
 | nombre | string | — |
 | tipo_documento | enum | DNI / Pasaporte u otro documento de identidad extranjero. |
 | número_documento | string | Único (constraint UNIQUE). DNI para residentes argentinos; pasaporte u otro documento equivalente para no residentes. |
-| matrícula | string | Habilitación profesional. Preparado para validación automática en Fase 2. |
+| matrícula | string (nullable) | Habilitación profesional. **Única entre fichas vigentes** cuando está cargada. Preparado para validación automática en Fase 2. |
 | clínica_id | UUID / FK | Clínica a la que pertenece. |
 
-> `número_documento` es independiente de `matrícula`: identifica a la persona, mientras que `matrícula` identifica su habilitación profesional. Ambos se validan por separado.
+> `número_documento` es independiente de `matrícula`: identifica a la persona, mientras que `matrícula` identifica su habilitación profesional. Ambos se validan por separado, y ninguno implica al otro — una ficha puede tener documento y no matrícula, que es exactamente el modo restringido.
+>
+> **La unicidad de `matrícula` es global entre fichas vigentes, no por clínica.** La emite un colegio profesional y no la clínica: el mismo número en dos planteles distintos es el mismo error que el mismo número dos veces en uno solo, y acotarla a la clínica sería tratar como local un identificador que no lo es. Rige solo sobre las fichas que la tienen cargada — dos veterinarios sin matrícula conviven, porque no hay nada que colisione.
 >
 > `matrícula` es nullable: la ficha puede existir sin ella, en modo restringido (Reglas de Negocio, 2.2). `número_documento` no lo es — a diferencia del Tutor, que puede auto-registrarse sin documento, el Veterinario siempre lo da de alta la clínica, que tiene el dato a mano. La unicidad es por el par (tipo_documento, número_documento) y entre fichas vigentes, con el mismo criterio que Tutor.
+>
+> **Ese criterio es el mismo pero el padrón no**: la unicidad del documento rige dentro de cada entidad y **no se cruza entre Tutor y Veterinario**. El mismo documento puede estar en una ficha de cada una, y no es una duplicación a corregir: la ficha de Tutor dice a quién pertenece un animal y la de Veterinario dice quién lo atiende, y nada obliga a que sean dos personas distintas. La veterinaria que además tiene un perro es el caso normal, no la excepción.
+>
+> Lo que sigue siendo de un solo rol es la **cuenta** (Reglas de Negocio, 2.1): esa persona entra con dos, una por cada papel, y como el email es único en todo el sistema, con dos direcciones distintas. Es la consecuencia asumida de que `tipo_usuario` no se edite — ver la nota de 4.9.
 >
 > La ficha y la cuenta de Usuario del veterinario se crean juntas y se dan de baja juntas (procesos 4.12 y 4.13). La baja es lógica (`deleted_at`) aunque Veterinario no sea una entidad clínica: lo que escribió conserva su autoría.
 
@@ -331,7 +339,7 @@ Las **claves son las mismas para los dos orígenes**; lo que cambia es qué es o
 | tipo | enum | Foto / PDF / estudio. |
 | clave_de_archivo | string | Ruta del objeto dentro del bucket. Es opaca para el cliente y no se expone en la API. Guarda **el archivo original, tal como se subió**. |
 | clave_de_vista_previa | string (nullable) | Ruta de un JPEG derivado, para los formatos que el navegador no sabe mostrar. NULL cuando el original ya se muestra —que es el caso de casi todos los adjuntos. Tampoco se expone en la API. |
-| nombre_archivo | string | Nombre original con el que se subió, para que la descarga no se llame como la clave. |
+| nombre_archivo | string | Nombre con el que el archivo se ve y se baja. Nace del nombre con el que se subió, pero **es un dato editable**: quien lo subió puede elegir otro al subirlo o renombrarlo después (Reglas de Negocio, 4.14). Conserva siempre la extensión del archivo real. |
 | content_type | string | Tipo MIME de **lo que sirve la URL de descarga**, que es la vista previa cuando existe. |
 | tamano_bytes | bigint | Tamaño del **original**, validado contra el máximo permitido antes de escribir. |
 | es_foto_perfil | boolean | Marca al adjunto que la aplicación muestra como foto de la mascota. `NOT NULL`, default `false`. Como máximo uno vigente por Paciente (Reglas de Negocio, 4.14). |
@@ -339,6 +347,10 @@ Las **claves son las mismas para los dos orígenes**; lo que cambia es qué es o
 > `paciente_id` pasó a ser obligatorio y `evento_id` quedó como el único nullable de los dos. La primera versión los tenía a ambos nullable y mutuamente excluyentes; con esa forma, resolver el alcance de un adjunto colgado de un evento exigía ir a buscar el evento para llegar a la mascota, y nada impedía una fila con las dos FK vacías. Todo adjunto pertenece a una mascota; que además documente un evento es información adicional.
 
 > `subido_por_usuario_id` no figuraba en la primera versión de esta tabla. Lo exige la regla de baja (Reglas de Negocio, 2.4): cada rol retira los adjuntos que subió, y sin el campo esa regla no es evaluable.
+
+> **`nombre_archivo` es lo único editable de un adjunto**, y sigue sin ser una excepción a "un adjunto no se edita": el archivo no cambia —ni sus bytes, ni su clave, ni su tipo—, cambia cómo se lo nombra. Es lo que hace legible una lista donde todo se llama `IMG_20260115_113045.jpg`, que es como sale de la cámara de un teléfono.
+>
+> **La extensión no se toca.** El nombre viaja en el `Content-Disposition` de la descarga, y sin extensión el sistema operativo no sabe con qué abrir lo que acaba de bajar: si el nombre elegido no la trae, se le agrega la del archivo real.
 
 > **La foto de perfil es un adjunto marcado y no un campo del Paciente.** Un `foto_url` colgado de la mascota habría sido una segunda ruta de subida —con su propia validación de MIME, su propio techo de tamaño y su propio objeto en el bucket— para un archivo que es exactamente lo mismo que ya sube el proceso de Adjuntos. Con el flag, la foto entra por el camino de siempre y hereda el alcance, la Auditoría y la baja lógica de cualquier adjunto; lo único que agrega es cuál de todos se muestra.
 >
@@ -383,6 +395,7 @@ Los formatos admitidos dependen del `tipo` declarado: **foto** acepta cualquier 
 | clínica_id | UUID / FK (nullable) | Completo solo si tipo_usuario = clínica_admin. |
 | clínica_de_pertenencia_id | UUID / FK (nullable) | Clínica a la que pertenece la cuenta, independiente de la FK de rol. NULL para tutor; obligatoria para veterinario; igual a clínica_id para clínica_admin. |
 | activación_pendiente | boolean | `true` entre que la línea de comandos crea la cuenta de clínica_admin y que alguien la estrena. Solo mientras vale `true` la cuenta puede no tener ningún método de autenticación. |
+| email_confirmado_at | timestamp (nullable) | Cuándo se probó que la dirección existe y que su titular la lee. NULL mientras no se probó. |
 | último_acceso | timestamp (nullable) | Fecha del último login exitoso. |
 | activo | boolean | Permite desactivar la cuenta sin afectar el historial que generó. |
 
@@ -392,6 +405,10 @@ Los formatos admitidos dependen del `tipo` declarado: **foto** acepta cualquier 
 >
 > Un Usuario debe tener al menos uno de password_hash o google_id no nulo — nunca ambos NULL, o no tendría forma de autenticarse. Ver Reglas de Negocio, sección 2.1, para el detalle de esta validación y el proceso de vinculación de cuenta Google.
 >
+> `email_confirmado_at` es una **fecha y no un booleano** porque cuándo se confirmó es parte del dato: una cuenta confirmada hace un año y otra confirmada hace un minuto no son lo mismo si algún día hay que revisar un alta sospechosa, y un `true` no se puede desandar hasta esa pregunta. Se completa al canjear el token de confirmación (Reglas de Negocio, 4.9.1), y también en el alta misma cuando la prueba ya vino con ella: la cuenta creada con Google nace confirmada porque el proveedor verificó el email, y la de veterinario o clínica_admin queda confirmada al activarse, porque el token de activación viajó a esa dirección.
+>
+> **No condiciona ningún permiso**, y por eso no aparece en la matriz de la sección 5. Hoy solo dice si el sistema puede escribirle a esa dirección — la decisión de que la confirmación no sea condición de nada está tomada y argumentada en Reglas de Negocio, 4.9 y 4.17.
+
 > `activación_pendiente` es lo que hace expresable la única excepción a esa regla. Existe como campo y no como "deducilo de que no tiene ninguno de los dos" porque la restricción vive en la base, y una restricción no puede consultar otra tabla para saber si hay un token de activación sin usar. El campo pasa a `false` en la misma transacción en que se escribe la contraseña (proceso 4.16), así que la ventana en que la excepción aplica es exactamente la que dura la activación.
 >
 > No se expone en la API. `tiene_contrasena` y `tiene_google_vinculado` en `false` a la vez ya dicen lo mismo para quien lo necesite, y agregar el campo invitaría a que un cliente decida algo a partir de él.

@@ -112,6 +112,35 @@ La dirección de un Tutor o de una Clínica se escribe con un autocompletado que
 - **Sin conexión no hay autocompletado.** Places es una llamada de red. En el móvil offline el campo degrada a texto libre y la dirección se sincroniza sin punto (Sincronización Offline, 4).
 - **Se puede desactivar por configuración.** `MAPAS_PROVEEDOR` en el cliente admite el proveedor real y uno nulo, que apaga el autocompletado y deja el campo como texto libre. Es el default en desarrollo: nadie tiene que dar de alta una clave facturable para levantar el proyecto, y un despliegue mal configurado degrada a texto libre en vez de romper el formulario.
 
+### 3.7 Envío de correo saliente
+
+El sistema manda cuatro correos, todos con un token adentro: activación de una cuenta (Reglas de Negocio, 4.12 y 4.16), confirmación del correo del tutor (4.9.1), recuperación de contraseña (4.4.1) e invitación a un co-tutor (4.19). Ninguno es un correo de marketing ni un aviso: los cuatro son el único camino por el que ese token llega a su destinatario.
+
+- **El proveedor es Resend, por su API HTTP.** Se eligió sobre SMTP porque el puerto 587 saliente está bloqueado en buena parte de los hosts donde esto va a correr, porque el error que devuelve dice qué pasó (una dirección rechazada no es lo mismo que una clave mal puesta) y porque devuelve un identificador de mensaje con el que rastrear un envío que el destinatario dice no haber recibido. SMTP no da ninguna de las tres cosas.
+- **El adaptador está detrás de una interfaz de la capa de negocio**, como el bucket y como el push. La capa de negocio arma el correo —a quién, con qué asunto y con qué token— y no sabe quién lo manda ni por dónde. Cambiar de proveedor es escribir otro adaptador.
+- **Sin `RESEND_API_KEY` el correo no se manda: se escribe en el log.** Es lo que corre en desarrollo, donde levantar un proveedor real para probar un flujo no se paga. **En producción no debe usarse** —deja el token a la vista de quien lea los logs— y por eso el arranque lo avisa.
+- **Un envío fallido no revierte la operación que lo originó.** Ni el alta de un veterinario ni el registro de un tutor se deshacen porque el correo no salió: lo que queda es una cuenta esperando que se le reemita el token, que es recuperable, y no un alta a medias, que no lo es. El fallo se registra en el log.
+- **No hay cola ni reintentos.** Los cuatro correos los puede volver a pedir una persona con un botón, así que la complejidad de una cola no se paga con el volumen de una clínica piloto. Es una decisión a revisar cuando el correo deje de ser siempre pedido por alguien que está mirando la pantalla.
+
+**El correo se tiñe con el tema de quien lo recibe.** Al tutor le llega en el naranja que ya ve en la aplicación, y a la clínica y al veterinario en el lila — son los dos temas del design system, y el backend elige entre ellos porque es el único que sabe de qué `tipo_usuario` es la cuenta. La invitación de co-tutor va siempre en naranja: quien la recibe todavía puede no tener cuenta, y la que se cree va a ser de tutor.
+
+> El botón usa `--color-primary-strong` y **no** `--color-primary-fill`, que es lo que el design system pone de relleno. La diferencia no es estética: el `fill` del tema tutor es `#F6A56C`, y texto blanco sobre ese naranja da **2.0:1** — ilegible para cualquier umbral de WCAG. En la aplicación ese token vive con otros tamaños y otro contexto; un botón de correo con texto de 15px no lo tolera. El `strong` es el naranja oscuro de marca del mismo tema, así que el correo sigue siendo del design system y además se puede leer (4.45:1, a un pelo del AA). Hay un test que lo calcula: un botón de correo no se puede inspeccionar con las herramientas del navegador una vez que salió.
+
+El remitente (`CORREO_REMITENTE`) y la base pública del frontend con la que se arma cada enlace (`APP_URL`) son configuración de entorno. Sin `APP_URL` el correo sale con el instructivo y sin enlace, que es peor que no mandarlo: por eso el arranque también lo avisa.
+
+### 3.8 A dónde lleva el enlace de un correo
+
+Los cuatro correos llevan un enlace, y el enlace tiene que caer donde esa persona pueda hacer algo. **Es siempre un `https` contra `APP_URL`**: uno solo, que funciona igual si el correo se abre en el teléfono o en la computadora.
+
+- **A tutor y veterinario el enlace les ofrece abrir la app.** Va con un `destino=app` que la página lee para mostrar, arriba y sin bloquear, un "abrir en Wayka". La pantalla hace su trabajo igual —confirma, o pide la contraseña nueva— para quien ignore el ofrecimiento o no tenga la app: el correo llega a la computadora tanto como al teléfono, y un enlace que exija la app deja afuera la mitad de los casos.
+- **Al clínica_admin no.** No es una preferencia sino la regla 2.3: **no puede autenticarse desde móvil**, así que ofrecerle la app sería ofrecerle una pantalla donde no va a poder entrar. Su enlace es la web y nada más.
+- **La marca la pone el backend, no la deduce el cliente.** El backend es el único que sabe de qué `tipo_usuario` es la cuenta a la que le está escribiendo; el cliente no puede saberlo antes de canjear el token, porque el canje no revela nada del token a propósito (4.2.2). Que el parámetro viaje en el enlace no filtra nada: lo tiene solo quien recibió el correo, que ya sabe quién es.
+
+Se descartaron las dos alternativas, y ninguna de las dos por mucho:
+
+- **Un esquema propio (`wayka://`) como único enlace** muere en los dos casos más comunes: el correo abierto en una computadora y el teléfono sin la app instalada. Serviría solo acompañado de un segundo enlace de respaldo, y un correo con dos enlaces para la misma acción es un correo que hay que leer dos veces.
+- **Universal links / App Links** son el destino correcto: el sistema operativo abre la app si está instalada y cae en la web si no, sin ninguna tira intermedia. Exigen `associatedDomains` en iOS, `intentFilters` verificados en Android y servir `/.well-known/` desde `wayka.app` — que todavía no resuelve. **Cuando existan, el mismo `https` empieza a abrir la app solo y esta tira deja de hacer falta**: es el paso siguiente natural, no un camino distinto.
+
 ## 4. Autenticación
 
 Wayka usa autenticación basada en tokens, con un token de acceso de vida corta y un token de refresco de vida más larga — el estándar para sistemas que sirven a web y móvil desde un mismo backend.
@@ -150,6 +179,15 @@ Credencial de un solo uso con la que una cuenta de clínica_admin recién creada
 
 > Todas las condiciones de rechazo (inexistente, vencido, ya usado, cuenta inactiva) devuelven el mismo error genérico. Distinguirlas le diría a quien esté probando valores al azar cuál de ellos existió alguna vez.
 
+### 4.2.3 Token de confirmación del correo
+
+Credencial de un solo uso con la que un tutor recién auto-registrado prueba que la dirección con la que se registró existe y que él la lee (Reglas de Negocio, 4.9.1). Como el de activación y como la tabla de sesión, **no es una entidad de dominio**: no la lee ninguna regla fuera de este proceso, no se audita y no aparece en el motor de permisos.
+
+- Misma forma que los otros dos: 256 bits de aleatoriedad, persistido como **hash SHA-256**, con `usuario_id`, vencimiento y fecha de uso; no se borra al usarse.
+- Vida por defecto: **48 horas** (`CONFIRMACION_TOKEN_TTL`), muy por encima de la hora que vive el de recuperación. La diferencia es deliberada y está en que **este no abre la cuenta**: los otros dos definen una contraseña, y quien intercepte este solo puede marcar como confirmada una dirección que ya era de otro. Un token que no es una credencial no necesita la ventana angosta de una que sí lo es.
+- Pedir un reenvío invalida los vigentes de esa cuenta, mismo criterio que la recuperación.
+- **El canje sobre una cuenta ya confirmada no es un error**: responde como si hubiera confirmado. Es la única de las tres credenciales donde el segundo intento se acepta, y es porque acá el estado final ya es el buscado — no hay nada que un reintento pueda escribir de más.
+
 ### 4.3 Ventana de revocación
 
 Con este esquema, desactivar a un Usuario (por ejemplo, un Veterinario que deja la clínica) no corta el acceso de forma instantánea: sigue siendo válido hasta que expira su token de acceso vigente. La ventana de exposición queda acotada a la vida del token de acceso (minutos, no días) — es un balance consciente entre seguridad y simplicidad, no un descuido.
@@ -164,7 +202,9 @@ El canal viaja como un campo `canal` (`web` | `movil`) en el cuerpo del login. *
 
 ### 4.5 Rutas públicas
 
-Casi toda la API exige un token de acceso válido. Las excepciones son el login (con contraseña o con Google), la renovación de token, el cierre de sesión y el **registro de tutor** (Reglas de Negocio, 4.9), que por definición ocurren antes de que exista un token. El registro de tutor es el único alta de cuenta que no requiere un usuario autenticado; el resto de las altas pasan por el motor de permisos como cualquier otra escritura.
+Casi toda la API exige un token de acceso válido. Las excepciones son el login (con contraseña o con Google), la renovación de token, el cierre de sesión, el **registro de tutor** (Reglas de Negocio, 4.9) y los tres canjes de token que viajan por fuera de la sesión —activación (4.16), recuperación (4.4.1) y confirmación del correo (4.9.1)—, que por definición ocurren antes de que exista un token. En los tres la credencial **es el token**, y por eso ninguno pide además el email: exigir un dato que circula en cualquier lado no agrega nada que el token no dé.
+
+El **reenvío** del correo de confirmación queda del otro lado: exige sesión. No es un canje sino un pedido, y un pedido público que acepte cualquier dirección es un padrón de cuentas registradas — el mismo motivo por el que la recuperación responde igual exista o no la cuenta. El registro de tutor es el único alta de cuenta que no requiere un usuario autenticado; el resto de las altas pasan por el motor de permisos como cualquier otra escritura.
 
 ### 4.6 Autenticación con Google (OAuth)
 

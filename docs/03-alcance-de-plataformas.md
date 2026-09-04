@@ -41,13 +41,15 @@ Wayka se compone de dos productos para el MVP: una aplicación web de gestión, 
 - **Definir la nueva**: se abre con el token del enlace, pide la contraseña nueva con la política de la regla 2.1 a la vista, y **cierra todas las sesiones abiertas** de esa cuenta.
 - Al canjear **no se entra**: el canje no emite sesión, igual que la activación (3.1.1). La pantalla lleva al ingreso.
 - Un token inexistente, vencido o ya usado se rechaza con un mismo mensaje genérico.
+- **Si quien llegó es tutor o veterinario, la pantalla ofrece abrir la app** con una tira arriba, y sigue funcionando entera para quien no la tenga o esté en la computadora (Arquitectura, 3.8). Al clínica_admin no se la muestra: no puede entrar desde móvil.
 - Es, junto con el ingreso, el registro de tutor (5.1) y la activación (3.1.1), una de las pantallas alcanzables sin sesión.
 
-### 3.1.1 Activación de la cuenta de clínica_admin (sin sesión)
-- Se abre con el token de activación que el administrador de la plataforma le entregó a la clínica (proceso 4.16 de Reglas de Negocio).
+### 3.1.1 Activación de la cuenta (sin sesión)
+- Se abre con el token de activación: al clínica_admin se lo entrega el administrador de la plataforma en mano, al veterinario le llega por correo cuando su clínica lo da de alta (procesos 4.12 y 4.16 de Reglas de Negocio). La pantalla es la misma para los dos y no distingue de dónde vino el token.
 - Pide únicamente la contraseña nueva, con la política de la regla 2.1 a la vista mientras se escribe.
 - Un token inexistente, vencido o ya usado se rechaza con un mismo mensaje genérico: la pantalla no ayuda a distinguir cuál de los tres fue.
 - Al activar **no se entra**: el canje no emite sesión. La pantalla lleva al login, donde se estrena la contraseña recién definida.
+- Al veterinario, que llega desde el correo, la pantalla le **ofrece abrir la app**; al clínica_admin, que pega el token a mano en la web, no (Arquitectura, 3.8).
 - Es, junto con el ingreso, la recuperación de contraseña (3.1.2) y el registro de tutor (5.1), una de las pantallas alcanzables sin sesión.
 
 ### 3.2 Panel de clínica (rol: Clínica_admin)
@@ -84,6 +86,7 @@ Es lo único de la sección que se mira todos los días, y por eso es lo único 
 - El calendario de la clínica, **el mismo que ve el veterinario** (3.6): por día, semana y mes, con la mascota, el tipo de cita y quién atiende.
 - **Agendar un turno nuevo**, sobre la grilla de la clínica (3.2.4) y con las mismas reglas que usa el veterinario. Para elegir la mascota hay una **búsqueda acotada a la cartera**: nombre, especie y a qué tutor llamar, sin abrir ninguna ficha.
 - **Dar de alta la mascota que todavía no está**, desde la misma búsqueda: si nadie coincide, se carga ahí. Es el cliente nuevo que llama para pedir el primer turno, y hasta acá el mostrador tenía que esperar al veterinario para poder tomárselo.
+  - Antes de darlo de alta hay que no encontrarlo, y el padrón se busca **también por documento**: es el dato que el mostrador tiene más a mano cuando alguien llama. El número no se muestra en los resultados —el rol no lo lee (Reglas de Negocio, 3.2)—; sirve para encontrar la ficha, no para leerla.
   - Si el tutor no está en el padrón, se lo da de alta con **nombre, contacto y consentimiento**. Documento y dirección los completa el veterinario cuando atiende (proceso 4.1).
   - El **número de chip no se carga acá**: lo pone el veterinario, que es quien lo implanta y lo lee.
 - **Reagendar** una cita pendiente: fecha, hora y si se le avisa al tutor.
@@ -98,6 +101,9 @@ Es lo único de la sección que se mira todos los días, y por eso es lo único 
 #### 3.2.3 Plantel
 
 - Alta, edición y baja lógica de Veterinarios asociados a la clínica. La ficha y la cuenta de acceso se crean juntas, en una sola operación (proceso 4.12 de Reglas de Negocio), y la baja de la ficha desactiva la cuenta (4.13).
+- **El formulario de alta no pide una contraseña**, y tiene que decir por qué: al veterinario le llega un correo con un enlace para definir la suya (4.12). Sin esa línea, quien completa el alta se queda esperando un campo que no está, o peor, cree que la cuenta ya quedó lista para usar.
+- Desde la ficha de quien todavía no estrenó su cuenta se **reenvía el correo de activación**. Es la salida del token que se venció o del correo que no llegó, y sin ella la única sería que el administrador de la plataforma emita otro por línea de comandos. Una cuenta sin estrenar se reconoce porque no tiene ningún método de autenticación configurado.
+- **Buscador por nombre, documento o matrícula**, con el mismo criterio de campo único que la búsqueda de tutores (3.3). No está por el tamaño del plantel —una clínica entra en una pantalla— sino porque es donde se responde "¿este número ya está cargado?" antes de que el alta lo rechace: la matrícula es única en todo el sistema (Reglas de Negocio, 2.1) y el error de guardado no dice de quién es la que colisiona.
 - El listado avisa **quién no tiene matrícula cargada**. Sin matrícula el veterinario queda en modo restringido y no puede escribir historial (Reglas de Negocio, 2.2) — hoy eso se descubre cuando la persona intenta cargar un evento y no puede, que es el peor momento y el peor lugar para enterarse.
 - Estado de cada cuenta: activa, suspendida o dada de baja.
 - **Cargar una ausencia**, desde el menú de la fila de esa persona (Modelo de Datos, 4.19): un rango con fecha y hora. Sirve para que la grilla no le ofrezca turnos a quien no va a estar, y va acá y no en una sección aparte porque **una ausencia es de alguien**. La ficha lista las suyas y ahí se dan de baja.
@@ -127,7 +133,7 @@ Los datos de la clínica, el horario de atención y la cuenta propia. Van juntos
 ### 3.3 Gestión de pacientes (rol: Veterinario)
 - Lectura del plantel de la propia clínica (sin poder modificarlo), para resolver quién firmó cada registro clínico.
 - Alta de paciente (con alta de tutor si no existe, según proceso 4.1 de Reglas de Negocio).
-- Búsqueda de tutores por documento, nombre o contacto; alta y edición de la ficha de un tutor, incluido completar documento y dirección — la dirección con el mismo autocompletado y mapa que usa el tutor en su ficha propia (5.8). El listado se pagina siempre: no está acotado a la propia clínica.
+- Búsqueda de tutores por documento, nombre o contacto, **en un solo campo**: se tipea lo que la persona diga —un apellido, un teléfono, un DNI— y el buscador resuelve contra los tres (Reglas de Negocio, 4.1). Alta y edición de la ficha de un tutor, incluido completar documento y dirección — la dirección con el mismo autocompletado y mapa que usa el tutor en su ficha propia (5.8). El listado se pagina siempre: no está acotado a la propia clínica.
 - Baja lógica de una ficha de tutor.
 - Búsqueda y listado de los pacientes vinculados a la propia clínica.
 - Ficha de paciente: datos básicos, historial de eventos clínicos, medicación activa e histórica. **Cada registro dice quién lo declaró**: los que cargó el tutor como antecedente van marcados de forma inequívoca junto a los del profesional, en la misma lista y no en una solapa aparte (Modelo de Datos, 4.5). El veterinario los edita y los da de baja como a los propios.
@@ -183,6 +189,8 @@ Son las mismas en las dos plataformas. Están diseñadas para teléfono —una c
 - Autenticación por email + contraseña, o con Google.
 - **Registro abierto**: el tutor crea su cuenta desde la app sin intervención de una clínica, indicando nombre, email, contraseña y el consentimiento de uso de datos (proceso 4.9 de Reglas de Negocio). El registro crea su ficha de Tutor junto con la cuenta.
 - Queda operativo de inmediato: entra y ve sus secciones vacías hasta que una clínica le vincule Pacientes.
+- **Al registrarse con contraseña le sale un correo con un enlace de confirmación** (proceso 4.9.1). La pantalla lo avisa y sigue de largo: confirmar **no es un paso del registro** y no bloquea nada — ni entrar, ni dar de alta la primera mascota (5.2). Registrarse con Google no manda nada, porque el correo ya viene verificado por el proveedor.
+- La pantalla de confirmación se abre desde el enlace del correo, **con o sin sesión**, y lo único que hace es avisar que quedó confirmado. Ofrece abrir la app, sin obligar: el correo llega tanto al teléfono como a la computadora. Un enlace ya usado dice lo mismo: quien vuelve a hacer clic hizo bien las cosas dos veces, no algo mal una.
 
 ### 5.2 Mis mascotas
 - Listado de las mascotas del tutor autenticado: las suyas y las que otra persona le compartió, con una etiqueta que distingue unas de otras y con qué nivel.
@@ -245,6 +253,7 @@ Una sola pestaña para todo lo que es del tutor y no de una mascota: su ficha, s
 
 **Cuenta**
 - Cambio de la contraseña de la propia cuenta.
+- **Si el correo está sin confirmar, se ve acá y desde acá se reenvía el enlace.** Es el único lugar donde el tutor puede arreglar un correo mal tipeado antes de necesitarlo, que es siempre el peor momento: el día que olvide la contraseña, la recuperación va a mandar el enlace a esa dirección (3.1.2). El aviso no bloquea nada y no vuelve a aparecer una vez confirmado.
 - Cerrar sesión, que además da de baja este dispositivo (5.5).
 
 **Avisos — solo móvil**
