@@ -175,8 +175,9 @@ La granularidad es **por registro, no por campo**. Con la mascota compartida hay
 
 ## 7. Rechazos en la interfaz
 
-Un cambio del tutor tiene tres estados en su dispositivo: **sincronizado**, **pendiente** y **rechazado**. Los tres son visibles.
+Un cambio del tutor tiene tres estados en su dispositivo: **sincronizado**, **pendiente** y **rechazado**. Los dos que piden algo del tutor son visibles; el tercero no.
 
+- **Estar al día no se muestra.** La versión anterior de esta sección pedía los tres estados a la vista, y el resultado era un cartel verde permanente arriba de la lista de mascotas: ocupa lugar en la pantalla más usada de la app para decir que no pasa nada. El estado normal es no tener nada pendiente, y lo normal no se anuncia — la barra aparece cuando hay algo que el tutor tiene que saber, y su ausencia significa que está todo enviado.
 - Lo pendiente se muestra aplicado, marcado como no confirmado. Ocultarlo hasta que sincronice haría que la app pareciera haber perdido lo que el tutor acaba de escribir.
 - Lo rechazado se muestra con el motivo y con el valor que quedó en el servidor. La app **no reintenta sola** una mutación rechazada: el rechazo significa que las condiciones cambiaron, y reintentar es pedirle al servidor la misma respuesta otra vez.
 - Una mutación rechazada sale de la cola cuando el tutor la resuelve o la descarta. Una cola que acumula rechazos indefinidamente reenvía basura en cada sincronización.
