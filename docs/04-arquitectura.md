@@ -156,6 +156,43 @@ Las rutas públicas (4.5) son las únicas que se pueden ejercitar sin credencial
 - **Detrás de un proxy, la IP se lee de `X-Forwarded-For` solo si `PROXY_CONFIABLE` está activo.** Sin eso, todos los pedidos comparten la IP del proxy y el límite castiga a la clínica entera; con eso activo pero *sin* un proxy real adelante, cualquiera se inventa la IP y el límite no existe. Es una variable que se enciende junto con el despliegue y no antes.
 - **Las rutas autenticadas no pasan por acá.** Ahí ya hay una credencial que se puede revocar y un motor de permisos que acota el alcance, y un límite por IP castigaría a una clínica entera detrás de una sola conexión. Acotar el volumen de una cuenta legítima es otro problema, y se resuelve con paginado y proyecciones, no con un contador de pedidos.
 
+### 3.10 Cabeceras de seguridad de la web
+
+El cliente web guarda el token de refresco en `localStorage` (doc 08, sección 6), y esa decisión se tomó sabiendo que un XSS se lo lleva. Lo que la sostiene no es el almacenamiento sino que no haya XSS, y de eso se ocupan estas cabeceras. **Ninguna vive en el bundle**: las pone quien sirve los archivos estáticos, así que se definen acá para que el día del despliegue no se improvise.
+
+| Cabecera | Valor | Por qué |
+|---|---|---|
+| `Content-Security-Policy` | ver abajo | Es la que convierte un XSS en un script que no ejecuta. Lo demás de esta tabla es cierre de bordes; esta es la que importa. |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | El token viaja en `Authorization` sobre TLS. Sin HSTS, el primer pedido de una pestaña nueva puede salir en claro. |
+| `X-Content-Type-Options` | `nosniff` | Un adjunto que el navegador decida interpretar como HTML es un XSS con el dominio de la aplicación. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Las rutas llevan ids de paciente y de tutor; el `Referer` los sacaría del dominio. |
+| `Permissions-Policy` | `camera=(self), geolocation=(self), microphone=()` | La cámara y la ubicación las usa el cliente; el micrófono no se usa en ninguna pantalla. |
+
+La política, con los orígenes de cada entorno puestos donde dicen las llaves:
+
+```
+default-src 'self';
+script-src 'self' 'sha256-67fhrP0+BkBqmgGGXTtgiVO/9EQs3QruYNU/7fnRkI8=';
+style-src 'self' 'unsafe-inline';
+img-src 'self' data: blob: {ORIGEN_DEL_BUCKET} https://maps.googleapis.com;
+connect-src 'self' {ORIGEN_DE_LA_API} https://places.googleapis.com;
+font-src 'self' data:;
+object-src 'none';
+base-uri 'none';
+form-action 'none';
+frame-ancestors 'none'
+```
+
+Las decisiones que no son obvias:
+
+- **`script-src` no lleva `'unsafe-inline'`, y por eso hace falta el hash.** La exportación estática de Expo emite un único script en línea —`globalThis.__EXPO_ROUTER_HYDRATE__=true;`— y todo lo demás son bundles con `src`. Ese script es una constante, así que su hash es estable entre builds de la misma versión de Expo. **Es lo primero a revisar si la aplicación deja de arrancar después de subir Expo**: el síntoma es una pantalla en blanco y un error de CSP en la consola, y el arreglo es recalcular el hash sobre el `dist/index.html` nuevo. Sin el hash, la alternativa es `'unsafe-inline'`, que vacía la protección entera.
+- **`style-src` sí lo lleva, y es el costo asumido.** React Native Web inyecta estilos en tiempo de ejecución; no hay forma de hashearlos ni de ponerles un nonce en una exportación estática. Un XSS de estilos puede filtrar datos por selectores de atributo, que es mucho menos que ejecutar código.
+- **`connect-src` incluye a Places y no a Maps**: el autocompletado se consulta por `fetch` y el mapa estático entra como imagen (3.6). Separarlos es lo que evita abrirle `connect-src` a un origen que solo tiene que devolver un PNG.
+- **`img-src` incluye el bucket** porque los adjuntos y la foto de la mascota se leen por URL prefirmada contra su propio origen (3.2), y `blob:` porque la cámara y el selector de archivos previsualizan antes de subir.
+- **`frame-ancestors` y `form-action` no funcionan en un `<meta>`**, solo como cabecera. Es el motivo por el que esto es configuración del servidor y no algo que se pueda meter en el HTML exportado.
+
+> **Nada de esto está aplicado todavía**, porque no hay dónde: no hay servidor sirviendo la web (sección 6). Queda escrito con los valores ya resueltos para que configurarlo sea copiarlos, y no volver a decidirlos.
+
 ## 4. Autenticación
 
 Wayka usa autenticación basada en tokens, con un token de acceso de vida corta y un token de refresco de vida más larga — el estándar para sistemas que sirven a web y móvil desde un mismo backend.
