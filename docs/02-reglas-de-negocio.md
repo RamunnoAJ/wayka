@@ -194,7 +194,7 @@ Sobre la ficha de Tutor (distinta de la cuenta de Usuario del tutor), el alcance
 |---|---|
 | Veterinario | **Busca** sin acotar (ver nota abajo). Para **leer, editar o dar de baja** una ficha concreta necesita un vínculo con su clínica: que el tutor sea dueño o co-tutor vigente de al menos un Paciente vinculado a esa clínica, o que la ficha la haya creado esa misma clínica (`clínica_de_origen_id`). |
 | Tutor | Solo alcanza su propia ficha, vía el tutor_id de su Usuario: puede leerla y editar nombre, contacto, dirección y documento. No puede darla de baja — la baja la decide la clínica, que es quien tiene Pacientes vinculados a ella — ni revocar su consentimiento por esta vía. |
-| Clínica_admin | **Busca en el padrón en proyección reducida** —nombre, contacto y si ya tiene documento cargado— y **da de alta una ficha** con nombre, contacto y consentimiento. No abre la ficha completa, no ve documento ni dirección, no edita lo ya cargado y no da de baja. |
+| Clínica_admin | **Busca en el padrón en proyección reducida** —nombre, contacto, si ya tiene documento cargado y si dio su consentimiento— y **da de alta una ficha** con nombre, contacto y consentimiento. No abre la ficha completa, no ve documento ni dirección, no edita lo ya cargado y no da de baja. |
 
 > **La búsqueda del padrón no se acota por clínica, y con el clínica_admin pasa lo mismo que con el veterinario**: antes del alta no hay ningún vínculo contra el cual acotarla. Lo que cambia es la proyección — el admin ve lo justo para reconocer a la persona que llama y decidir si ya está: nombre, cómo contactarla, y si la ficha está completa o le falta el documento.
 >
@@ -202,7 +202,7 @@ Sobre la ficha de Tutor (distinta de la cuenta de Usuario del tutor), el alcance
 >
 > El costo asumido es que quien tiene este buscador puede **confirmar si un documento está en el padrón**, aunque no pueda leer el de nadie. Es el mismo tipo de filtración que ya tiene la búsqueda por contacto, y se acepta por el mismo motivo: es un rol de la clínica, autenticado y auditado, no una pantalla pública.
 >
-> Es la proyección reducida que esta misma sección tiene anotada como **pendiente** para la búsqueda del veterinario. Se implementa primero para el rol que se está abriendo ahora; la del veterinario sigue devolviendo la ficha completa y la deuda sigue abierta.
+> Es la misma proyección reducida que devuelve la búsqueda del veterinario. Se implementó primero para este rol, que era el que se estaba abriendo, y después se llevó a la otra: eran el mismo problema, y sostener dos proyecciones distintas sobre el mismo padrón solo dejaba una de las dos protegida.
 >
 > Del alta escribe **nombre, contacto y consentimiento**, lo mismo que pide el auto-registro (4.9). Documento y dirección los completa el veterinario cuando atiende, que es cuando los tiene delante.
 
@@ -285,7 +285,14 @@ Sobre la ficha de Veterinario (el plantel de la clínica), el alcance se resuelv
 
 > **La búsqueda queda deliberadamente sin acotar**: es como el veterinario resuelve si el tutor ya existe antes de que exista ningún vínculo (proceso 4.1). Sin ella no habría forma de encontrar la ficha de un tutor que se auto-registró para darle de alta su primera mascota.
 >
-> La contrapartida asumida es que el listado devuelve la ficha completa, incluidos documento y dirección, para cualquier persona del sistema. Acotar la lectura por id mientras la búsqueda sigue exponiendo el mismo dato deja el acotamiento a medias. **Pendiente**: que el listado devuelva una proyección reducida (id, nombre, contacto parcial, si tiene documento cargado) y que la ficha completa solo salga por el endpoint acotado.
+> **Lo que la acota no es el alcance sino la proyección y la exigencia de un término.** Son las dos mitades de una misma decisión, y sin las dos el buscador es un padrón descargable:
+>
+> - **La búsqueda del veterinario devuelve la misma proyección reducida que la del clínica_admin** —id, nombre, contacto, si la ficha ya tiene documento cargado y si la persona dio su consentimiento—, y nada más. Ni el número de documento ni la dirección. La ficha completa sale solo por el endpoint acotado por id, que sí exige vínculo con la clínica. Antes devolvía la ficha entera de cualquier persona del sistema: acotar la lectura por id mientras la búsqueda exponía el mismo dato dejaba el acotamiento a medias.
+> - **Sin término de búsqueda no hay listado.** Antes, un pedido sin criterio devolvía el padrón entero paginado; el buscador existe para encontrar a *una* persona de la que ya se sabe algo, no para recorrer a todas. Un listado sin término no responde ninguna pregunta del mostrador y es exactamente la forma de bajarse el padrón. Rige igual para los dos roles y para las dos búsquedas.
+>
+> **El consentimiento viaja en la proyección porque es una precondición del proceso que la búsqueda sirve.** Sin él no se le da de alta una mascota a esa persona (regla 2.2), y la pantalla tiene que poder decirlo *antes* del intento y no como el texto de un error (Alcance de Plataformas, 3.3). Es de la misma clase que `tiene_documento`: dice en qué estado está la ficha, no un dato de la persona.
+>
+> El documento sigue entrando en la búsqueda sin entrar en la respuesta, con el mismo argumento que ya valía para el clínica_admin: quien tiene el DNI delante lo tipea y encuentra la ficha, y lo que vuelve sigue siendo nombre, contacto y si el documento está cargado. El veterinario conserva además la búsqueda **exacta** por tipo y número, que es como resuelve si el documento que está por cargar ya está en otra ficha (regla 2.1) antes de que el alta lo rechace sin decirle de quién es.
 >
 > `clínica_de_origen_id` cubre la ventana entre crear la ficha y crear el Paciente que justifica el alcance. Para un tutor **auto-registrado** ese campo es NULL, así que su ficha no está al alcance de ninguna clínica hasta que una le dé de alta una mascota: en ese caso el veterinario crea primero el Paciente y después completa el documento y la dirección de la ficha. Es un cambio de orden respecto de 4.9, que describía la completitud sin decir en qué momento ocurre.
 
