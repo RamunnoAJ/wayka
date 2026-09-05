@@ -91,8 +91,8 @@ Quedan fuera del prefijo, en la raíz, las rutas que no son recursos de negocio:
 |---|---|
 | `/health` | Lo consulta el balanceador o el orquestador, no un cliente. Su ruta es parte del despliegue, y no tiene por qué mudarse cuando cambie la versión de la API. También responde dentro del prefijo, porque está declarado en el contrato. |
 | `/health/ready` | Contesta una pregunta distinta de `/health`: no si el proceso vive, sino si esta instancia puede atender —verifica sus dependencias—. Sin él, un despliegue con la base caída responde 200 y se lleva tráfico que solo puede fallar. **No está en el contrato**: es del despliegue, y quien decide con su respuesta es el balanceador. |
-| `/metrics` | Latencias y tasas de error del backend. Tampoco está en el contrato, y no se publica al mundo: la cierra la red del despliegue o un token. Es observabilidad y no telemetría de producto — esa entra por `/api/v1/telemetria` y se guarda con el usuario adentro. |
-| `/openapi.yaml`, `/docs` | Son el contrato y su visor, no algo que el contrato describa. |
+| `/metrics` | Latencias y tasas de error del backend. Tampoco está en el contrato, y no se publica al mundo: la cierra la red del despliegue o el token de `METRICAS_TOKEN`. **En producción, sin ese token la ruta no se monta**: desde el proceso no hay forma de saber si la red la cerró, así que la falla es cerrada. Es observabilidad y no telemetría de producto — esa entra por `/api/v1/telemetria` y se guarda con el usuario adentro. |
+| `/openapi.yaml`, `/docs` | Son el contrato y su visor, no algo que el contrato describa. **En producción no se publican** salvo que `DOCUMENTACION_PUBLICA` lo pida: el visor carga Swagger UI desde un CDN ajeno, el contrato es el mapa completo de la API, y ningún cliente los necesita — los tipos del frontend se escriben contra el YAML del repositorio. |
 
 ### 3.5 CORS
 
@@ -103,6 +103,7 @@ El cliente web corre en otro origen que el backend, así que el navegador exige 
 - **Un pedido de un origen no autorizado no se rechaza en el servidor.** CORS lo bloquea en el navegador; cortarlo acá daría la falsa impresión de ser una barrera de seguridad, cuando un cliente que no sea un navegador lo ignora por completo. La barrera real sigue siendo el motor de permisos.
 - **El preflight lo contesta el middleware**, antes de la autenticación y sin llegar al router: viaja sin token y ninguna ruta del contrato declara `OPTIONS`, así que el router lo rechazaría con un 405 que el navegador reporta como un CORS mal configurado.
 - `Authorization` se declara explícitamente en `Access-Control-Allow-Headers`: el comodín `*` de la especificación no la cubre, y sin ella el token nunca sale del navegador.
+- **`Retry-After` se declara en `Access-Control-Expose-Headers`** por el mismo motivo del lado de la respuesta: un navegador solo lee seis cabeceras por defecto, y sin exponerla el `429` del límite de intentos (3.9) llegaría con el dato de cuánto esperar y el cliente no podría leerlo.
 
 ### 3.6 Autocompletado y confirmación de direcciones
 
@@ -143,6 +144,17 @@ Se descartaron las dos alternativas, y ninguna de las dos por mucho:
 
 - **Un esquema propio (`wayka://`) como único enlace** muere en los dos casos más comunes: el correo abierto en una computadora y el teléfono sin la app instalada. Serviría solo acompañado de un segundo enlace de respaldo, y un correo con dos enlaces para la misma acción es un correo que hay que leer dos veces.
 - **Universal links / App Links** son el destino correcto: el sistema operativo abre la app si está instalada y cae en la web si no, sin ninguna tira intermedia. Exigen `associatedDomains` en iOS, `intentFilters` verificados en Android y servir `/.well-known/` desde `wayka.app` — que todavía no resuelve. **Cuando existan, el mismo `https` empieza a abrir la app solo y esta tira deja de hacer falta**: es el paso siguiente natural, no un camino distinto.
+
+### 3.9 Límite de intentos sobre las rutas públicas
+
+Las rutas públicas (4.5) son las únicas que se pueden ejercitar sin credencial, y son justo las que deciden si alguien entra. Sin un techo, probar contraseñas contra `/auth/login` no cuesta nada, y cada intento fallido le cuesta al servidor un hasheo bcrypt completo: es a la vez la vía de fuerza bruta y la de agotarlo.
+
+- **El límite es por IP y cubre el grupo entero, no cada ruta por separado.** Repartir los intentos entre el login, el canje de activación y el de recuperación no tiene que multiplicar el presupuesto: quien está probando valores al azar los prueba donde le convenga.
+- **Diez pedidos de ráfaga y diez por minuto sostenidos.** Una persona que se equivoca de contraseña tres veces seguidas y pide un enlace de recuperación no lo roza; un script sí, en el primer segundo.
+- **El rechazo es `429` con `Retry-After`**, y no un `401` disfrazado: un cliente legítimo que lo recibe tiene que poder distinguir "esperá" de "la credencial está mal", que es la diferencia entre reintentar y pedirle al usuario que escriba de nuevo.
+- **El estado vive en memoria del proceso.** Con una sola instancia (sección 5) alcanza, y es lo que evita meter un Redis para el piloto. La contrapartida está escrita: el día que haya una segunda instancia, el presupuesto real se multiplica por la cantidad de instancias, y el límite pasa a ser del proxy de entrada o de un almacén compartido.
+- **Detrás de un proxy, la IP se lee de `X-Forwarded-For` solo si `PROXY_CONFIABLE` está activo.** Sin eso, todos los pedidos comparten la IP del proxy y el límite castiga a la clínica entera; con eso activo pero *sin* un proxy real adelante, cualquiera se inventa la IP y el límite no existe. Es una variable que se enciende junto con el despliegue y no antes.
+- **Las rutas autenticadas no pasan por acá.** Ahí ya hay una credencial que se puede revocar y un motor de permisos que acota el alcance, y un límite por IP castigaría a una clínica entera detrás de una sola conexión. Acotar el volumen de una cuenta legítima es otro problema, y se resuelve con paginado y proyecciones, no con un contador de pedidos.
 
 ## 4. Autenticación
 
